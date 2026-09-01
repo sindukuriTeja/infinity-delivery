@@ -10,6 +10,13 @@ const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const inr = (n) => "₹" + (Math.round(n * 100) / 100).toLocaleString("en-IN");
 
+/* Render a product image: real photo if present, else the emoji fallback. */
+const img = (v, cls = "") =>
+  v && v.startsWith("/")
+    ? `<img class="p-photo ${cls}" src="${v}" alt="" loading="lazy"
+        onerror="this.onerror=null;this.outerHTML='<span class=&quot;ph-emoji ${cls}&quot;>🛒</span>'">`
+    : `<span class="ph-emoji ${cls}">${v || ""}</span>`;
+
 /* ---------------- STATE ---------------- */
 const state = {
   categories: [],
@@ -132,7 +139,7 @@ function productCard(p) {
       : `<button type="button" class="add-btn" data-add="${p.id}" aria-label="Add to cart">+</button>`;
   return `
   <div class="p-card" data-pid="${p.id}">
-    <div class="p-img">${p.image}
+    <div class="p-img">${img(p.image)}
       ${p.is_fresh ? '<span class="p-badge">FRESH</span>' : p.is_best_seller ? '<span class="p-badge best">BEST</span>' : ""}
       ${off ? `<span class="p-off">${off}% OFF</span>` : ""}
     </div>
@@ -210,7 +217,7 @@ function renderCart() {
     if (!p) return "";
     return `
     <div class="cart-item">
-      <div class="ci-em">${p.image}</div>
+      <div class="ci-em">${img(p.image, "ci")}</div>
       <div class="ci-info">
         <div class="ci-name">${p.name}</div>
         <div class="ci-price">${inr(p.price)} · ${p.unit}</div>
@@ -252,7 +259,7 @@ async function openProduct(pid) {
     const stars = (n) => "★".repeat(Math.round(n)) + "☆".repeat(5 - Math.round(n));
     const outOfStock = p.stock <= 0;
     $("#prodBody").innerHTML = `
-      <div class="pd-hero">${p.image}</div>
+      <div class="pd-hero">${img(p.image, "hero")}</div>
       <div class="pd-body">
         <div class="pd-name">${p.name}</div>
         <div class="pd-name-te">${p.name_te || ""}</div>
@@ -374,7 +381,7 @@ async function loadOrders() {
         const det = await api("/orders/" + o.id);
         const box = $(`.order-items[data-oid="${o.id}"]`);
         if (box) box.innerHTML = det.items.map(i =>
-          `<div class="oi"><span class="em">${i.image}</span><span class="nm">${i.name}</span><span class="qt">× ${i.qty}</span><span class="lt">${inr(i.line_total)}</span></div>`).join("");
+          `<div class="oi">${img(i.image, "oi")}<span class="nm">${i.name}</span><span class="qt">× ${i.qty}</span><span class="lt">${inr(i.line_total)}</span></div>`).join("");
       } catch (_) {}
     }));
 
@@ -438,7 +445,7 @@ async function loadAdmin() {
     // top products
     $("#topProds").innerHTML = s.top_products.length
       ? s.top_products.map((p, i) => `
-        <div class="rank-row"><span class="rk">${i + 1}</span><span class="em">${p.image}</span><span class="rn">${p.name}</span><span class="rv">${inr(p.revenue)}</span></div>`).join("")
+        <div class="rank-row"><span class="rk">${i + 1}</span>${img(p.image, "rk")}<span class="rn">${p.name}</span><span class="rv">${inr(p.revenue)}</span></div>`).join("")
       : '<p style="color:var(--muted)">No sales data yet</p>';
 
     // suppliers
