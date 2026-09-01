@@ -323,16 +323,20 @@ async function loadMandi() {
 /* ---------------- ORDERS ---------------- */
 async function loadUsers() {
   try {
-    const orders = await api("/orders");
-    const map = {};
-    orders.forEach(o => { if (!map[o.user_id]) map[o.user_id] = o.full_name; });
-    state.users = Object.entries(map).map(([id, name]) => ({ id: +id, name }));
+    const users = await api("/users");
+    state.users = users.map(u => ({ id: u.id, name: u.full_name, plus: !!u.is_plus }));
+    if (!state.users.find(u => u.id === state.currentUser)) state.currentUser = state.users[0] ? state.users[0].id : 1;
     renderUserPicker();
     await loadOrders();
   } catch (e) {
     toast("Could not load users", "error");
   }
 }
+/* True if the current user is an Infinity Plus member (free delivery). */
+const currentUserIsPlus = () => {
+  const u = state.users.find(x => x.id === state.currentUser);
+  return !!(u && u.plus);
+};
 function renderUserPicker() {
   $("#userPicker").innerHTML = state.users.map(u =>
     `<button type="button" class="user-chip ${state.currentUser === u.id ? "active" : ""}" data-u="${u.id}">${u.name}</button>`).join("");
@@ -475,7 +479,7 @@ function openCheckout() {
     <div class="field"><label>Phone</label><input id="coPhone" placeholder="Enter phone number"></div>
     <div class="field"><label>Delivery Address</label><input id="coAddr" placeholder="House no, Street, Area"></div>
     <div class="field"><label>Delivery Zone</label>
-      <select id="coZone">${state.zones.map(z => `<option value="${z.id}" ${state.zone && state.zone.id === z.id ? "selected" : ""}>${z.name} · ${z.sla_minutes} min · ${z.delivery_fee > 0 ? inr(z.delivery_fee) : "Free"}</option>`).join("")}</select>
+      <select id="coZone">${state.zones.map(z => `<option value="${z.id}" ${state.zone && state.zone.id === z.id ? "selected" : ""}>${z.name} · ${z.sla_minutes} min · ${(currentUserIsPlus() || z.delivery_fee <= 0) ? "Free" : inr(z.delivery_fee)}</option>`).join("")}</select>
     </div>
     <div class="field"><label>Payment Method</label>
       <div class="pay-grid" id="payGrid">
@@ -490,11 +494,90 @@ function openCheckout() {
       <div class="promo-msg" id="promoMsg"></div>
     </div>
     <div class="summary-box" id="coSummary"></div>
+    <div class="upi-panel" id="upiPanel" hidden>
+      <div class="upi-head">
+        <span class="upi-title">📲 Pay with UPI</span>
+        <span class="upi-amt" id="upiAmt"></span>
+      </div>
+      <div class="upi-qr" id="upiQr"></div>
+      <div class="upi-vpa-row">
+        <span class="upi-vpa-label">UPI ID</span>
+        <span class="upi-vpa" id="upiVpa"></span>
+        <button type="button" class="upi-copy" id="upiCopy">Copy</button>
+      </div>
+      <div class="upi-apps">
+        <span class="upi-apps-label">Or tap to pay with your app</span>
+        <div class="upi-app-grid">
+          <button type="button" class="upi-app gp" data-app="gpay"><span class="aa">📱</span>GPay</button>
+          <button type="button" class="upi-app pp" data-app="phonepe"><span class="aa">📲</span>PhonePe</button>
+          <button type="button" class="upi-app pt" data-app="paytm"><span class="aa">💜</span>Paytm</button>
+          <button type="button" class="upi-app bh" data-app="bhim"><span class="aa">🇮🇳</span>BHIM</button>
+        </div>
+      </div>
+      <p class="upi-hint">Tap an app to pay <b id="upiAmt2"></b> in it, or scan the QR with any UPI app. The money goes to <b>8500116578</b>.</p>
+      <label class="upi-confirm">
+        <input type="checkbox" id="upiPaid">
+        <span>I have paid the amount above ✓</span>
+      </label>
+    </div>
+    <div class="upi-panel cod-panel" id="codPanel" hidden>
+      <p class="upi-hint">💵 <b>Cash on Delivery</b> — pay the delivery person when your order arrives. No advance payment needed.</p>
+    </div>
     <button type="button" class="place-btn" id="placeOrder">Place Order · ${inr(sub)}</button>`;
 
   let pay = "upi", promoDiscount = 0, promoCode = null;
   const getSelectedZone = () => state.zones.find(x => x.id === +$("#coZone").value);
-  const zoneFee = () => { const z = getSelectedZone(); return z ? (z.delivery_fee || 0) : 0; };
+  const zoneFee = () => {
+    const z = getSelectedZone();
+    if (!z) return 0;
+    return currentUserIsPlus() ? 0 : (z.delivery_fee || 0);  // Plus = free delivery
+  };
+  /* Must mirror the backend formula in app.py exactly (subtotal rounded first,
+     then GST rounded), so the amount on the QR always equals the amount the
+     server actually charges. */
+  const currentTotal = () => {
+    const fee = zoneFee();
+    const subtotal = Math.round(sub * 100) / 100;
+    const taxable = subtotal - promoDiscount;
+    const gst = Math.round(taxable * 0.05 * 100) / 100;
+    return Math.round((taxable + fee + gst) * 100) / 100;
+  };
+
+  /* ---- UPI QR (pays to 8500116578) ---- */
+  const UPI_VPA = "8500116578@upi";
+  let qr = null;
+  const upiUrl = (total) =>
+    "upi://pay?pa=" + UPI_VPA + "&pn=" + encodeURIComponent("Infinity Delivery") +
+    "&am=" + total.toFixed(2) + "&cu=INR&tn=" + encodeURIComponent("Infinity Delivery order");
+  function renderUpi(total) {
+    const panel = $("#upiPanel");
+    panel.hidden = false;
+    $("#upiAmt").textContent = inr(total);
+    $("#upiAmt2").textContent = inr(total);
+    $("#upiVpa").textContent = UPI_VPA;
+    const box = $("#upiQr");
+    box.innerHTML = "";
+    qr = new QRCode(box, { text: upiUrl(total), width: 200, height: 200,
+      correctLevel: QRCode.CorrectLevel.M });
+  }
+  function refreshPayPanel() {
+    const upiPanel = $("#upiPanel"), codPanel = $("#codPanel");
+    upiPanel.hidden = pay !== "upi";
+    codPanel.hidden = pay !== "cod";
+    if (pay === "upi") renderUpi(currentTotal());
+    updatePlaceBtn();
+  }
+  function updatePlaceBtn() {
+    const btn = $("#placeOrder");
+    const paid = $("#upiPaid").checked;
+    if (pay === "upi" && !paid) {
+      btn.disabled = true;
+      btn.textContent = "Scan QR & tick “I have paid” to continue";
+    } else {
+      btn.disabled = false;
+      btn.textContent = "Place Order · " + inr(currentTotal());
+    }
+  }
 
   const renderSummary = () => {
     const fee = zoneFee();
@@ -507,7 +590,7 @@ function openCheckout() {
       <div class="cart-line"><span>Delivery</span><span>${fee > 0 ? inr(fee) : "Free"}</span></div>
       <div class="cart-line"><span>GST (5%)</span><span>${inr(gst)}</span></div>
       <div class="cart-line total"><span>Total</span><span>${inr(total)}</span></div>`;
-    $("#placeOrder").textContent = "Place Order · " + inr(total);
+    refreshPayPanel();
   };
   renderSummary();
 
@@ -515,6 +598,26 @@ function openCheckout() {
     $$("#payGrid .pay-opt").forEach(x => x.classList.remove("active"));
     o.classList.add("active");
     pay = o.dataset.pay;
+    refreshPayPanel();
+  });
+  $("#upiCopy").onclick = () => {
+    const done = () => toast("UPI ID copied: " + UPI_VPA, "success");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(UPI_VPA).then(done).catch(done);
+    } else { done(); }
+  };
+  $("#upiPaid").onchange = () => updatePlaceBtn();
+  // Tap-to-pay: launch the customer's UPI app with the exact amount pre-filled.
+  // All UPI apps (GPay / PhonePe / Paytm / BHIM) register to handle the
+  // standard upi:// intent, so firing it opens the app on the phone.
+  $$("#upiPanel .upi-app").forEach(b => b.onclick = () => {
+    const appName = b.querySelector(".aa") ? b.childNodes[b.childNodes.length - 1].textContent.trim() : b.textContent.trim();
+    const url = upiUrl(currentTotal());
+    const a = document.createElement("a");
+    a.href = url; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+    toast("Opening " + appName + " to pay " + inr(currentTotal()) +
+      " — complete the payment, then tick “I have paid”", "success");
   });
   $("#coZone").onchange = () => {
     const z = getSelectedZone();
@@ -557,8 +660,7 @@ function openCheckout() {
       if (location.hash.includes("orders")) loadOrders();
     } catch (e) {
       toast("Error: " + e.message, "error");
-      btn.disabled = false;
-      renderSummary();
+      updatePlaceBtn();
     }
   };
   $("#checkoutOverlay").classList.add("open");
@@ -609,13 +711,14 @@ function route() {
 /* ---------------- INIT ---------------- */
 async function init() {
   try {
-    const [cats, prods, promos, zones] = await Promise.all([
-      api("/categories"), api("/products?limit=200"), api("/promos"), api("/zones"),
+    const [cats, prods, promos, zones, users] = await Promise.all([
+      api("/categories"), api("/products?limit=200"), api("/promos"), api("/zones"), api("/users"),
     ]);
     state.categories = cats;
     state.products = prods;
     state.promos = promos;
     state.zones = zones;
+    state.users = users.map(u => ({ id: u.id, name: u.full_name, plus: !!u.is_plus }));
 
     // set default zone if none saved
     if (!state.zone && zones.length) {

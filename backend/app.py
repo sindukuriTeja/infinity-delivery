@@ -226,6 +226,7 @@ def create_order():
     data = request.get_json(force=True)
     user_id   = data.get("user_id")
     address_id= data.get("address_id")
+    zone_id   = data.get("zone_id")            # zone the customer picked at checkout
     items     = data.get("items", [])          # [{product_id, qty}]
     pmode     = data.get("payment_mode", "cod")
     promo     = (data.get("promo_code") or "").strip() or None
@@ -241,8 +242,11 @@ def create_order():
     if not addr:
         # fall back to the user's default address
         addr = row(db.execute("SELECT * FROM addresses WHERE user_id=? ORDER BY is_default DESC, id LIMIT 1", (user_id,)))
-    if not addr:
-        return jsonify({"error": "no delivery address on file"}), 404
+    # delivery zone: prefer the one the customer picked at checkout, else the
+    # address's zone. This must match the fee shown on the UPI QR at checkout.
+    order_zone = zone_id if zone_id else (addr["zone_id"] if addr else None)
+    if not order_zone:
+        return jsonify({"error": "no delivery zone / address on file"}), 404
 
     # compute subtotal & validate stock
     subtotal = 0.0
@@ -270,12 +274,11 @@ def create_order():
                 discount = min((p_row["discount_value"]/100.0)*subtotal, p_row["max_discount"] or 1e9)
     discount = round(discount, 2)
 
-    # delivery fee (free for Plus members)
+    # delivery fee (free for Plus members) — based on the selected zone
     fee = 0.0
-    if addr.get("zone_id"):
-        zone_row = row(db.execute("SELECT delivery_fee FROM delivery_zones WHERE id=?", (addr["zone_id"],)))
-        if zone_row:
-            fee = float(zone_row["delivery_fee"] or 0)
+    zone_row = row(db.execute("SELECT delivery_fee FROM delivery_zones WHERE id=?", (order_zone,)))
+    if zone_row:
+        fee = float(zone_row["delivery_fee"] or 0)
     if user["is_plus"]:
         fee = 0.0
     gst = round((subtotal - discount) * 0.05, 2)
@@ -286,7 +289,7 @@ def create_order():
     cur = db.execute("""INSERT INTO orders(order_no,user_id,address_id,zone_id,status,subtotal,discount,
         delivery_fee,gst,total,payment_mode,payment_status,promo_code,placed_at)
         VALUES(?,?,?,?, 'placed', ?,?,?,?, ?,?,?,?,?)""",
-        (order_no, user_id, address_id, addr["zone_id"], subtotal, discount, fee, gst,
+        (order_no, user_id, addr["id"] if addr else None, order_zone, subtotal, discount, fee, gst,
          total, pmode, "pending", promo, now()))
     order_id = cur.lastrowid
 
@@ -409,6 +412,15 @@ def stats():
         GROUP BY date(placed_at) ORDER BY day
     """))
     return jsonify(s)
+
+# ---------------------------------------------------------------------------
+#  USERS  (id, name, plus status — used by checkout for free-delivery logic)
+# ---------------------------------------------------------------------------
+@app.route("/api/users")
+def users():
+    db = get_db()
+    cur = db.execute("SELECT id, full_name, is_plus FROM users WHERE is_active=1 ORDER BY id")
+    return jsonify(rows(cur))
 
 # ---------------------------------------------------------------------------
 #  SUPPLIERS
