@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Infinity Delivery — Groceries in Chilakaluripet</title>
+<meta name="description" content="Infinity Delivery — your local mandi, delivered to your door in Chilakaluripet in 30 minutes. Farm-fresh groceries at the best price, in Telugu.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Noto+Sans+Telugu:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23FFB020'/%3E%3Cstop offset='0.55' stop-color='%23F57C00'/%3E%3Cstop offset='1' stop-color='%23E64A19'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='url(%23g)'/%3E%3Cg fill='none' stroke='white' stroke-width='10' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='34' cy='52' r='14'/%3E%3Cpath d='M 56 44 A 14 14 0 1 1 75 38'/%3E%3Cpath d='M 75 38 L 85 27'/%3E%3C/g%3E%3Cpath d='M 92 19 L 91 32 L 79 22 Z' fill='white'/%3E%3C/svg%3E">
+</head>
+<body>
+<!-- ============ TOP BAR ============ -->
+<header class="topbar" id="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#/" data-nav="home">
+      <span class="brand-logo">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="34" cy="52" r="14"/>
+            <path d="M 56 44 A 14 14 0 1 1 75 38"/>
+            <path d="M 75 38 L 85 27"/>
+          </g>
+          <path d="M 92 19 L 91 32 L 79 22 Z" fill="currentColor"/>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <b>infinity</b>
+        <small>Delivery</small>
+      </span>
+    </a>
+
+    <div class="location" id="locationBtn">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.3-7-11a7 7 0 1 1 14 0c0 4.7-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      <div class="loc-text">
+        <small>Deliver to</small>
+        <b id="locName">Chilakaluripet · 522616</b>
+      </div>
+      <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+      <input id="searchInput" type="search" placeholder="Search rice, milk, tomato… / అరిసి, పాలు, టమాటో" autocomplete="off">
+      <button type="button" id="searchClear" class="search-clear" hidden>✕</button>
+    </div>
+
+    <div class="topbar-actions">
+      <button type="button" class="icon-btn lang-toggle" id="langToggle" title="తెలుగు / English">తె</button>
+      <button type="button" class="cart-btn" id="cartBtn">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/><path d="M2 3h3l2.6 12.4a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.5-1.2L22 7H6"/></svg>
+        <span class="cart-badge" id="cartBadge">0</span>
+        <span class="cart-total" id="cartTotal">₹0</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ============ NAV TABS ============ -->
+<nav class="tabs" id="tabs">
+  <a href="#/" data-tab="home" class="tab active">Shop</a>
+  <a href="#/mandi" data-tab="mandi" class="tab">Mandi Prices</a>
+  <a href="#/orders" data-tab="orders" class="tab">My Orders</a>
+  <a href="#/admin" data-tab="admin" class="tab">Dashboard</a>
+</nav>
+
+<!-- ============ MAIN ============ -->
+<main class="main" id="main">
+  <!-- SHOP VIEW -->
+  <section id="view-home" class="view active">
+    <!-- HERO -->
+    <div class="hero">
+      <div class="hero-content">
+        <span class="hero-pill">🚀 30-minute delivery in Chilakaluripet</span>
+        <h1>Farm-fresh groceries,<br><span>delivered to your door.</span></h1>
+        <p class="hero-sub">Your local mandi, at the best price — <b>మీ లోకల్ మండి, ఉత్తమ ధరకు</b></p>
+        <div class="hero-cta">
+          <button type="button" class="btn-primary" id="heroShop">Shop Now</button>
+          <a class="btn-ghost" href="#/mandi">Today's Mandi Prices</a>
+        </div>
+        <div class="hero-stats" id="heroStats"></div>
+      </div>
+      <div class="hero-art">
+        <div class="float-card fc1">🍅<span>Fresh Tomato<br><b>₹32/kg</b></span></div>
+        <div class="float-card fc2">🍚<span>Sona Masoori<br><b>₹480/5kg</b></span></div>
+        <div class="float-card fc3">🥛<span>Nandini Milk<br><b>₹50/L</b></span></div>
+        <div class="hero-blob"></div>
+      </div>
+    </div>
+
+    <!-- PROMO STRIP -->
+    <div class="promo-strip" id="promoStrip"></div>
+
+    <!-- CATEGORIES -->
+    <div class="section-head">
+      <h2>Shop by Category</h2>
+      <span class="te">వర్గాల వారీగా కొనుగోలు</span>
+    </div>
+    <div class="cat-chips" id="catChips"></div>
+
+    <!-- FILTER BAR -->
+    <div class="filter-bar" id="filterBar">
+      <button type="button" class="chip active" data-filter="all">All</button>
+      <button type="button" class="chip" data-filter="fresh">🌱 Farm Fresh</button>
+      <button type="button" class="chip" data-filter="best">⭐ Best Sellers</button>
+      <button type="button" class="chip" data-filter="offers">🏷️ Offers</button>
+      <div class="sort-wrap">
+        <select id="sortSelect">
+          <option value="popular">Popular</option>
+          <option value="price_asc">Price: Low to High</option>
+          <option value="price_desc">Price: High to Low</option>
+          <option value="discount">Biggest Discount</option>
+          <option value="name">Name A&#8211;Z</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- PRODUCT GRID -->
+    <div class="section-head" id="resultsHead">
+      <h2 id="resultsTitle">All Products</h2>
+      <span class="count" id="resultsCount"></span>
+    </div>
+    <div class="grid" id="productGrid"></div>
+    <div class="empty" id="emptyState" hidden>
+      <div class="empty-emoji">🔍</div>
+      <p>No products found. Try a different search.</p>
+    </div>
+  </section>
+
+  <!-- MANDI VIEW -->
+  <section id="view-mandi" class="view">
+    <div class="mandi-hero">
+      <span class="hero-pill">📊 Live APMC Mandi Benchmark</span>
+      <h1>Today's Mandi Prices</h1>
+      <p class="hero-sub">Chilakaluripet APMC (Tenali Market) · <b>Chilakaluripet APMC ధరలు</b> · Source: Agmarknet</p>
+    </div>
+    <div class="mandi-note">
+      💡 <b>Why we show this:</b> We buy fresh produce directly at the mandi and sell to you at a fair price. Compare our in-app price with the wholesale rate below.
+    </div>
+    <div class="mandi-grid" id="mandiGrid"></div>
+  </section>
+
+  <!-- ORDERS VIEW -->
+  <section id="view-orders" class="view">
+    <div class="section-head">
+      <h2>My Orders</h2>
+      <span class="te">నా ఆర్డర్లు</span>
+    </div>
+    <div class="user-picker" id="userPicker"></div>
+    <div class="orders-list" id="ordersList"></div>
+  </section>
+
+  <!-- ADMIN VIEW -->
+  <section id="view-admin" class="view">
+    <div class="admin-head">
+      <h2>Business Dashboard</h2>
+      <span class="te">బిజినెస్ డాష్‌బోర్డ్</span>
+    </div>
+    <div class="stat-cards" id="statCards"></div>
+    <div class="admin-cols">
+      <div class="admin-card">
+        <h3>GMV — Last 7 Days</h3>
+        <div class="bar-chart" id="gmvChart"></div>
+      </div>
+      <div class="admin-card">
+        <h3>Orders by Status</h3>
+        <div class="status-list" id="statusList"></div>
+      </div>
+    </div>
+    <div class="admin-cols">
+      <div class="admin-card">
+        <h3>Top Categories</h3>
+        <div class="rank-list" id="topCats"></div>
+      </div>
+      <div class="admin-card">
+        <h3>Top Products</h3>
+        <div class="rank-list" id="topProds"></div>
+      </div>
+    </div>
+    <div class="admin-card">
+      <h3>Supply Chain &#8212; Mandi &amp; Farms</h3>
+      <div class="supplier-grid" id="supplierGrid"></div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ CART DRAWER ============ -->
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<aside class="drawer" id="cartDrawer">
+  <div class="drawer-head">
+    <h3>Your Cart <span class="te">మీ బకెట్</span></h3>
+    <button type="button" class="icon-btn" id="cartClose">✕</button>
+  </div>
+  <div class="drawer-body" id="cartBody"></div>
+  <div class="drawer-foot" id="cartFoot"></div>
+</aside>
+
+<!-- ============ CHECKOUT MODAL ============ -->
+<div class="modal-overlay" id="checkoutOverlay">
+  <div class="modal checkout" id="checkoutModal">
+    <button type="button" class="icon-btn modal-close" id="checkoutClose">✕</button>
+    <div class="checkout-body" id="checkoutBody"></div>
+  </div>
+</div>
+
+<!-- ============ PRODUCT DETAIL MODAL ============ -->
+<div class="modal-overlay" id="prodOverlay">
+  <div class="modal prod-detail" id="prodModal">
+    <button type="button" class="icon-btn modal-close" id="prodClose">✕</button>
+    <div id="prodBody"></div>
+  </div>
+</div>
+
+<!-- ============ LOCATION MODAL ============ -->
+<div class="modal-overlay" id="locOverlay">
+  <div class="modal loc-modal" id="locModal">
+    <button type="button" class="icon-btn modal-close" id="locClose">✕</button>
+    <div class="loc-head">
+      <h3>Choose Delivery Zone</h3>
+      <p>38 wards + 15 villages across Chilakaluripet mandal</p>
+    </div>
+    <div class="loc-tabs">
+      <button type="button" class="chip active" data-ztype="ward">Wards (38)</button>
+      <button type="button" class="chip" data-ztype="village">Villages (15)</button>
+    </div>
+    <div class="loc-list" id="locList"></div>
+  </div>
+</div>
+
+<!-- ============ TOAST ============ -->
+<div class="toast" id="toast"></div>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <span class="brand-logo sm">
+        <svg viewBox="0 0 100 100"><g fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"><circle cx="34" cy="52" r="14"/><path d="M 56 44 A 14 14 0 1 1 75 38"/><path d="M 75 38 L 85 27"/></g><path d="M 92 19 L 91 32 L 79 22 Z" fill="currentColor"/></svg>
+      </span>
+      <div><b>infinity</b> Delivery</div>
+    </div>
+    <p class="footer-tag">Your local mandi, delivered to your door in Chilakaluripet.</p>
+    <div class="footer-links">
+      <a href="#/">Shop</a><a href="#/mandi">Mandi Prices</a><a href="#/orders">Orders</a><a href="#/admin">Dashboard</a>
+    </div>
+    <p class="footer-note">📍 Chilakaluripet, Palnadu (Guntur) District, Andhra Pradesh · PIN 522616 · 📞 1800-XXX-XXXX · UPI · COD</p>
+  </div>
+</footer>
+
+<script src="js/app.js"></script>
+</body>
+</html>

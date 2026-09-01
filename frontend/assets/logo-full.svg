@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 120" width="460" height="120">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFB020"/>
+      <stop offset="0.55" stop-color="#F57C00"/>
+      <stop offset="1" stop-color="#E64A19"/>
+    </linearGradient>
+    <filter id="ds" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="2.4" stdDeviation="2" flood-color="#7A2E00" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- gradient tile with the mark -->
+  <rect x="0" y="0" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <g transform="translate(10,10) scale(1.0)" filter="url(#ds)" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="34" cy="52" r="14"/>
+    <path d="M 56 44 A 14 14 0 1 1 75 38"/>
+    <path d="M 75 38 L 85 27"/>
+  </g>
+  <path transform="translate(10,10)" d="M 92 19 L 91 32 L 79 22 Z" fill="#fff" filter="url(#ds)"/>
+
+  <!-- wordmark -->
+  <text x="150" y="66" font-family="'Poppins',Arial,sans-serif" font-size="52" font-weight="800" fill="#1F2430" letter-spacing="-1">infinity</text>
+  <text x="152" y="98" font-family="'Poppins',Arial,sans-serif" font-size="26" font-weight="600" fill="#F57C00" letter-spacing="6">Delivery</text>
+</svg>
