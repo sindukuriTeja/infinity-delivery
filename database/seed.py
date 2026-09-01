@@ -453,12 +453,14 @@ def main():
               for (_, _, slug, _, _) in CATEGORIES}
 
     # products
+    # image = real photo (frontend/assets/products/<id>.jpg); the emoji in the
+    # list is kept only as a UI fallback if a photo is missing.
     for n, (name, te, cat, brand, unit, qty, price, mrp, mandi, stock, img, fresh, best) in enumerate(P):
         cur.execute("""INSERT INTO products(sku,name,name_te,category_id,brand,unit,unit_qty,
                        price,mrp,mandi_price,stock,image,is_fresh,is_best_seller)
                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     ("SKU-%04d" % (n+1), name, te, cat_id[cat], brand, unit, qty,
-                     price, mrp, mandi, stock, img, fresh, best))
+                     price, mrp, mandi, stock, "/assets/products/%d.jpg" % (n+1), fresh, best))
         # (is_active defaults to 1)
     prod_id = [r[0] for r in cur.execute("SELECT id FROM products ORDER BY id")]
 
