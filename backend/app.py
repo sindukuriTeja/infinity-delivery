@@ -77,6 +77,24 @@ def categories():
     """)
     return jsonify(rows(cur))
 
+@app.route("/api/shops")
+def shops():
+    """Public list of active shops (merchants) with their details + live product count."""
+    db = get_db()
+    cur = db.execute("""
+        SELECT m.id, m.name, m.name_te, m.phone, m.address, m.open_hours, m.zone_ids, m.is_default,
+               (SELECT COUNT(*) FROM products p WHERE p.merchant_id = m.id AND p.is_active = 1) AS product_count
+        FROM merchants m WHERE m.is_active = 1
+        ORDER BY m.is_default DESC, m.id
+    """)
+    data = rows(cur)
+    for d in data:
+        try:
+            d["zone_ids"] = json.loads(d["zone_ids"] or "[]")
+        except Exception:
+            d["zone_ids"] = []
+    return jsonify(data)
+
 @app.route("/api/products")
 def products():
     db = get_db()
@@ -84,10 +102,13 @@ def products():
     cat = request.args.get("category", "").strip()
     fresh = request.args.get("fresh", "").strip()
     best  = request.args.get("best", "").strip()
+    shop  = request.args.get("shop", "").strip()
     sort  = request.args.get("sort", "popular")
     limit = min(int(request.args.get("limit", 200)), 500)
 
     where, args = ["p.is_active = 1"], []
+    if shop:
+        where.append("p.merchant_id = ?"); args.append(shop)
     if cat:
         where.append("c.slug = ?"); args.append(cat)
     if fresh == "1":

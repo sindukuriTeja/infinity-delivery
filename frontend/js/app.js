@@ -35,6 +35,8 @@ const state = {
   currentUser: 1,
   mdTab: "overview",
   adTab: "overview",
+  shops: [],
+  activeShop: 1,
 };
 
 /* ---------------- API ---------------- */
@@ -113,6 +115,46 @@ function renderPromos() {
       <div><b>${p.description.split("(")[0].trim()}</b><small>Min order ${inr(p.min_order)}</small></div>
       <span class="promo-code">${p.code}</span>
     </div>`).join("");
+}
+
+/* ---------------- RENDER: SHOP (shop name + details, then its products) ---------------- */
+function renderShop() {
+  const head = $("#shopHead"), tabs = $("#shopTabs");
+  if (!head) return;
+  const shop = state.shops.find(s => s.id === state.activeShop) || state.shops[0];
+  if (!shop) { head.innerHTML = ""; tabs.innerHTML = ""; return; }
+  state.activeShop = shop.id;
+  const zones = Array.isArray(shop.zone_ids) ? shop.zone_ids : [];
+  head.innerHTML = `
+    <div class="shop-ident">
+      <div class="shop-logo">🏪</div>
+      <div class="shop-ident-txt">
+        <div class="shop-name">${shop.name}${shop.is_default ? ' <span class="shop-flag">Flagship</span>' : ""}</div>
+        <div class="shop-name-te">${shop.name_te || ""}</div>
+        <div class="shop-meta">
+          <span class="shop-chip">🕒 ${shop.open_hours || "7:00 AM – 10:00 PM"}</span>
+          ${shop.phone ? `<span class="shop-chip">📞 ${shop.phone}</span>` : ""}
+          ${shop.address ? `<span class="shop-chip">📍 ${shop.address}</span>` : ""}
+          <span class="shop-chip">🚚 ${zones.length} zones</span>
+        </div>
+      </div>
+    </div>
+    <div class="shop-count">${shop.product_count || 0} products</div>`;
+  // shop switcher tabs (shown when there is more than one shop)
+  if (state.shops.length > 1) {
+    tabs.innerHTML = state.shops.map(s => `
+      <button type="button" class="shop-tab ${s.id === shop.id ? "active" : ""}" data-shop="${s.id}">
+        <span class="st-name">${s.name}</span><span class="st-count">${s.product_count || 0}</span>
+      </button>`).join("");
+    $$("#shopTabs .shop-tab").forEach(b => b.onclick = () => {
+      state.activeShop = +b.dataset.shop;
+      state.activeCat = "all"; state.filter = "all"; state.search = "";
+      $("#searchInput").value = "";
+      renderShop(); renderCategories(); loadProducts();
+    });
+  } else {
+    tabs.innerHTML = "";
+  }
 }
 
 /* ---------------- RENDER: CATEGORIES ---------------- */
@@ -197,6 +239,7 @@ function renderProducts() {
 }
 async function loadProducts() {
   const p = new URLSearchParams();
+  if (state.activeShop) p.set("shop", state.activeShop);
   if (state.activeCat !== "all") p.set("category", state.activeCat);
   if (state.filter === "fresh") p.set("fresh", "1");
   if (state.filter === "best") p.set("best", "1");
@@ -1256,14 +1299,17 @@ function bindSubtabs(sel, attr, tabKey, reload) {
 /* ---------------- INIT ---------------- */
 async function init() {
   try {
-    const [cats, prods, promos, zones, users] = await Promise.all([
+    const [cats, prods, promos, zones, users, shops] = await Promise.all([
       api("/categories"), api("/products?limit=200"), api("/promos"), api("/zones"), api("/users"),
+      api("/shops").catch(() => []),
     ]);
     state.categories = cats;
     state.products = prods;
     state.promos = promos;
     state.zones = zones;
     state.users = users.map(u => ({ id: u.id, name: u.full_name, plus: !!u.is_plus }));
+    state.shops = shops;
+    if (shops.length) state.activeShop = shops[0].id;
 
     // set default zone if none saved
     if (!state.zone && zones.length) {
@@ -1277,6 +1323,7 @@ async function init() {
 
     renderHeroStats();
     renderPromos();
+    renderShop();
     renderCategories();
     renderProducts();
     renderCartBadge();
