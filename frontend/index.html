@@ -63,7 +63,8 @@
   <a href="#/" data-tab="home" class="tab active">Shop</a>
   <a href="#/mandi" data-tab="mandi" class="tab">Mandi Prices</a>
   <a href="#/orders" data-tab="orders" class="tab">My Orders</a>
-  <a href="#/admin" data-tab="admin" class="tab">Dashboard</a>
+  <a href="#/merchant" data-tab="merchant" class="tab">Merchant</a>
+  <a href="#/admin" data-tab="admin" class="tab">Admin</a>
 </nav>
 
 <!-- ============ MAIN ============ -->
@@ -165,37 +166,41 @@
     <div class="orders-list" id="ordersList"></div>
   </section>
 
+
+  <section id="view-login" class="view"><div class="md-login"><h2>Infinity Console <span class="te">ఇన్ఫినిటీ నిర్వహణ</span></h2><div class="field"><label>Username</label><input id="loginUser"></div><div class="field"><label>Password</label><input id="loginPass" type="password"></div><button class="btn-primary" id="loginSubmit">Sign in</button><p>Demo accounts</p><button class="chip demo-login" data-user="admin" data-pass="admin123">Admin</button> <button class="chip demo-login" data-user="merchant" data-pass="merchant123">Merchant</button></div></section>
+  <!-- MERCHANT VIEW -->
+  <section id="view-merchant" class="view">
+    <div class="admin-head">
+      <button class="btn-ghost signout">Sign out</button>
+      <h2>Merchant Dashboard</h2>
+      <span class="te">వ్యాపారి డాష్‌బోర్డ్</span>
+    </div>
+    <div class="subtabs" id="merchantSubtabs">
+      <button type="button" class="chip active" data-mtab="overview">📊 Overview</button>
+      <button type="button" class="chip" data-mtab="products">📦 Products</button>
+      <button type="button" class="chip" data-mtab="orders">🧾 Orders</button>
+      <button type="button" class="chip" data-mtab="settings">⚙️ Shop Settings</button>
+    </div>
+    <div id="merchantContent" class="admin-card"></div>
+  </section>
+
   <!-- ADMIN VIEW -->
   <section id="view-admin" class="view">
     <div class="admin-head">
-      <h2>Business Dashboard</h2>
-      <span class="te">బిజినెస్ డాష్‌బోర్డ్</span>
+      <button class="btn-ghost signout">Sign out</button>
+      <h2>Main Admin Dashboard</h2>
+      <span class="te">ప్లాట్‌ఫారం నియంత్రణ కేంద్రం</span>
     </div>
-    <div class="stat-cards" id="statCards"></div>
-    <div class="admin-cols">
-      <div class="admin-card">
-        <h3>GMV — Last 7 Days</h3>
-        <div class="bar-chart" id="gmvChart"></div>
-      </div>
-      <div class="admin-card">
-        <h3>Orders by Status</h3>
-        <div class="status-list" id="statusList"></div>
-      </div>
+    <div class="subtabs" id="adminSubtabs">
+      <button type="button" class="chip active" data-atab="overview">📊 Overview</button>
+      <button type="button" class="chip" data-atab="merchants">🏪 Merchants</button>
+      <button type="button" class="chip" data-atab="orders">🧾 Orders</button>
+      <button type="button" class="chip" data-atab="customers">👥 Customers</button>
+      <button type="button" class="chip" data-atab="catalog">📦 Catalog</button>
+      <button type="button" class="chip" data-atab="promos">🏷️ Promotions</button>
+      <button type="button" class="chip" data-atab="delivery">🚚 Zones &amp; Delivery</button>
     </div>
-    <div class="admin-cols">
-      <div class="admin-card">
-        <h3>Top Categories</h3>
-        <div class="rank-list" id="topCats"></div>
-      </div>
-      <div class="admin-card">
-        <h3>Top Products</h3>
-        <div class="rank-list" id="topProds"></div>
-      </div>
-    </div>
-    <div class="admin-card">
-      <h3>Supply Chain &#8212; Mandi &amp; Farms</h3>
-      <div class="supplier-grid" id="supplierGrid"></div>
-    </div>
+    <div id="adminContent"></div>
   </section>
 </main>
 
@@ -239,6 +244,14 @@
       <button type="button" class="chip" data-ztype="village">Villages (15)</button>
     </div>
     <div class="loc-list" id="locList"></div>
+  </div>
+</div>
+
+<!-- ============ GENERIC CRUD MODAL ============ -->
+<div class="modal-overlay" id="crudOverlay">
+  <div class="modal crud-modal" id="crudModal">
+    <button type="button" class="icon-btn modal-close" id="crudClose">✕</button>
+    <div id="crudBody"></div>
   </div>
 </div>
 

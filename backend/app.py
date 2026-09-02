@@ -6,7 +6,7 @@ Chilakaluripet groceries & daily-essentials home-delivery.
 
 Run:  python3 app.py   (serves on http://localhost:8000)
 """
-import os, json, sqlite3, datetime, re
+import os, json, sqlite3, datetime, re, hashlib, secrets, functools
 from flask import Flask, request, jsonify, send_from_directory, g
 
 HERE   = os.path.dirname(os.path.abspath(__file__))
@@ -87,7 +87,7 @@ def products():
     sort  = request.args.get("sort", "popular")
     limit = min(int(request.args.get("limit", 200)), 500)
 
-    where, args = [], []
+    where, args = ["p.is_active = 1"], []
     if cat:
         where.append("c.slug = ?"); args.append(cat)
     if fresh == "1":
@@ -284,13 +284,14 @@ def create_order():
     gst = round((subtotal - discount) * 0.05, 2)
     total = round(subtotal - discount + fee + gst, 2)
 
+    merchant_id = lines[0][0].get("merchant_id") or 1
     order_no = "INF-%s-%05d" % (datetime.date.today().year,
                  db.execute("SELECT COUNT(*) FROM orders").fetchone()[0] + 1)
     cur = db.execute("""INSERT INTO orders(order_no,user_id,address_id,zone_id,status,subtotal,discount,
-        delivery_fee,gst,total,payment_mode,payment_status,promo_code,placed_at)
-        VALUES(?,?,?,?, 'placed', ?,?,?,?, ?,?,?,?,?)""",
+        delivery_fee,gst,total,payment_mode,payment_status,promo_code,placed_at,merchant_id)
+        VALUES(?,?,?,?, 'placed', ?,?,?,?, ?,?,?,?,?,?)""",
         (order_no, user_id, addr["id"] if addr else None, order_zone, subtotal, discount, fee, gst,
-         total, pmode, "pending", promo, now()))
+         total, pmode, "pending", promo, now(), merchant_id))
     order_id = cur.lastrowid
 
     for p, qty, line_total in lines:
@@ -429,6 +430,9 @@ def users():
 def suppliers():
     db = get_db()
     return jsonify(rows(db.execute("SELECT * FROM suppliers WHERE is_active=1 ORDER BY type, name")))
+
+from role_api import install as install_role_api
+install_role_api(app, get_db, row, rows, now)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=False)

@@ -33,16 +33,19 @@ const state = {
   zone: JSON.parse(localStorage.getItem("id_zone") || "null"),
   lang: localStorage.getItem("id_lang") || "en",
   currentUser: 1,
+  mdTab: "overview",
+  adTab: "overview",
 };
 
 /* ---------------- API ---------------- */
 async function api(path, opts = {}) {
   const res = await fetch(API + path, {
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(localStorage.id_token ? {Authorization: "Bearer " + localStorage.id_token} : {}) },
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401) { localStorage.removeItem("id_token"); localStorage.removeItem("id_account"); location.hash="#/login"; }
   if (!res.ok) throw new Error(data.error || res.status);
   return data;
 }
@@ -406,60 +409,7 @@ async function loadOrders() {
   }
 }
 
-/* ---------------- ADMIN ---------------- */
-async function loadAdmin() {
-  try {
-    state.stats = await api("/stats");
-    const s = state.stats;
-    const cards = [
-      ["GMV (Delivered)", inr(s.gmv), "Total revenue"],
-      ["Orders", s.orders_total, s.orders_today + " today"],
-      ["Customers", s.users, s.plus_members + " Plus members"],
-      ["Products", s.products, s.fresh_products + " farm fresh"],
-      ["Avg Order Value", inr(s.aov), "per order"],
-      ["Zones", s.zones, "wards + villages"],
-      ["Suppliers", s.suppliers, "mandi &amp; farms"],
-    ];
-    $("#statCards").innerHTML = cards.map(([l, v, sub]) =>
-      `<div class="stat-card"><div class="sc-label">${l}</div><div class="sc-val">${v}</div><div class="sc-sub">${sub}</div></div>`).join("");
-
-    // GMV 7d chart
-    const days = s.gmv_7d || [];
-    const max = Math.max(1, ...days.map(d => d.gmv));
-    $("#gmvChart").innerHTML = days.length ? days.map(d => `
-      <div class="bar">
-        <div class="bar-val">${inr(d.gmv)}</div>
-        <div class="bar-fill" style="height:${Math.max(4, (d.gmv / max) * 100)}%"></div>
-        <div class="bar-day">${d.day.slice(5)}</div>
-      </div>`).join("") : '<p style="color:var(--muted)">No data yet</p>';
-
-    // status list
-    const total = s.orders_total || 1;
-    $("#statusList").innerHTML = s.by_status.map(x => `
-      <div class="status-row"><span class="sl">${x.status.replace(/_/g, " ")}</span>
-      <div class="track"><div class="fill" style="width:${(x.n / total) * 100}%"></div></div>
-      <span class="sv">${x.n}</span></div>`).join("");
-
-    // top categories
-    $("#topCats").innerHTML = s.top_categories.length
-      ? s.top_categories.map((c, i) => `
-        <div class="rank-row"><span class="rk">${i + 1}</span><span class="rn">${c.name}</span><span class="rv">${inr(c.revenue)}</span></div>`).join("")
-      : '<p style="color:var(--muted)">No sales data yet</p>';
-
-    // top products
-    $("#topProds").innerHTML = s.top_products.length
-      ? s.top_products.map((p, i) => `
-        <div class="rank-row"><span class="rk">${i + 1}</span>${img(p.image, "rk")}<span class="rn">${p.name}</span><span class="rv">${inr(p.revenue)}</span></div>`).join("")
-      : '<p style="color:var(--muted)">No sales data yet</p>';
-
-    // suppliers
-    const sup = await api("/suppliers");
-    $("#supplierGrid").innerHTML = sup.map(x => `
-      <div class="supplier-card"><span class="st">${x.type}</span><b>${x.name}</b><small>📍 ${x.location}</small><small>📞 ${x.phone}</small></div>`).join("");
-  } catch (e) {
-    toast("Could not load dashboard", "error");
-  }
-}
+/* (admin dashboard now lives in the ROLES section below — renderAdminTab) */
 
 /* ---------------- CHECKOUT ---------------- */
 function openCheckout() {
@@ -692,20 +642,615 @@ function renderZones(type) {
 }
 function closeLocation() { $("#locOverlay").classList.remove("open"); }
 
+/* ============================================================================
+   ROLES — MERCHANT + ADMIN DASHBOARDS
+   ============================================================================ */
+const NEXT_STATUS = { placed:"confirmed", confirmed:"packed", packed:"out_for_delivery", out_for_delivery:"delivered" };
+const STATUS_LABEL = s => s.replace(/_/g, " ");
+const esc = (v) => (v == null ? "" : String(v).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])));
+
+/* ---- generic CRUD modal ---- */
+function openCrud({ title, sub, fields, values = {}, submitLabel = "Save", onSubmit }) {
+  $("#crudBody").innerHTML = `
+    <h3>${title}</h3>
+    ${sub ? `<p class="crud-sub">${sub}</p>` : ""}
+    <div class="form-grid">
+      ${fields.map(f => {
+        const v = values[f.key] != null ? values[f.key] : (f.def != null ? f.def : "");
+        if (f.type === "select")
+          return `<div class="field ${f.full ? "full" : ""}"><label>${f.label}</label>
+            <select data-f="${f.key}">${f.options.map(o => `<option value="${o[0]}" ${String(o[0]) === String(v) ? "selected" : ""}>${o[1]}</option>`).join("")}</select></div>`;
+        if (f.type === "textarea")
+          return `<div class="field ${f.full ? "full" : ""}"><label>${f.label}</label><textarea data-f="${f.key}" rows="3">${esc(v)}</textarea></div>`;
+        if (f.type === "checkbox")
+          return `<div class="field check"><label><input type="checkbox" data-f="${f.key}" ${v ? "checked" : ""}> ${f.label}</label></div>`;
+        return `<div class="field ${f.full ? "full" : ""}"><label>${f.label}</label><input data-f="${f.key}" type="${f.type || "text"}" value="${esc(v)}" ${f.ph ? `placeholder="${f.ph}"` : ""}></div>`;
+      }).join("")}
+    </div>
+    <div class="crud-actions">
+      <button type="button" class="btn-ghost" id="crudCancel">Cancel</button>
+      <button type="button" class="btn-primary" id="crudSubmit">${submitLabel}</button>
+    </div>`;
+  $("#crudOverlay").classList.add("open");
+  const read = () => {
+    const o = {};
+    $$("#crudBody [data-f]").forEach(el => {
+      const k = el.dataset.f;
+      if (el.type === "checkbox") o[k] = el.checked ? 1 : 0;
+      else if (el.type === "number") o[k] = el.value === "" ? null : Number(el.value);
+      else o[k] = el.value;
+    });
+    return o;
+  };
+  $("#crudCancel").onclick = closeCrud;
+  $("#crudSubmit").onclick = async () => {
+    const btn = $("#crudSubmit"); btn.disabled = true;
+    try { await onSubmit(read()); closeCrud(); }
+    catch (e) { toast(e.message, "error"); btn.disabled = false; }
+  };
+}
+function closeCrud() { $("#crudOverlay").classList.remove("open"); }
+
+/* ---- shared order card (merchant + admin) ---- */
+function orderCard(o, { withMerchant = false, advance = true } = {}) {
+  const next = NEXT_STATUS[o.status];
+  return `
+  <div class="order-card">
+    <div class="order-head">
+      <div>
+        <div class="order-no">${o.order_no}</div>
+        <div class="order-date">${o.placed_at} · ${esc(o.zone_name || "Chilakaluripet")}</div>
+      </div>
+      <span class="status-pill ${o.status}">${STATUS_LABEL(o.status)}</span>
+    </div>
+    <div class="order-body">
+      <div class="order-items">
+        ${(o.items || []).map(i => `<div class="oi">${img(i.image, "oi")}<span class="nm">${esc(i.name)}</span><span class="qt">× ${i.qty}</span><span class="lt">${inr(i.line_total)}</span></div>`).join("")}
+      </div>
+      <div class="order-foot">
+        <span>👤 ${esc(o.full_name)}${o.phone ? " · " + esc(o.phone) : ""}</span>
+        ${withMerchant && o.merchant_name ? `<span>🏪 ${esc(o.merchant_name)}</span>` : ""}
+        <span style="margin-left:auto">Total <b style="font-size:16px">${inr(o.total)}</b></span>
+        <span>${(o.payment_mode || "").toUpperCase()}</span>
+      </div>
+      ${advance && next ? `<div class="order-actions">
+        <button type="button" class="status-btn primary" data-next="${o.id}:${next}">Mark as ${STATUS_LABEL(next)} →</button>
+        ${o.status !== "delivered" && o.status !== "cancelled" ? `<button type="button" class="status-btn danger" data-cancel="${o.id}">Cancel</button>` : ""}
+      </div>` : ""}
+    </div>
+  </div>`;
+}
+function bindOrderActions(container, reload) {
+  $$(container + " [data-next]").forEach(b => b.onclick = async () => {
+    const [id, st] = b.dataset.next.split(":"); b.disabled = true;
+    try { await api(`/merchant/orders/${id}/status`, { method: "POST", body: { status: st } });
+      toast("Order → " + STATUS_LABEL(st), "success"); reload(); }
+    catch (e) { toast(e.message, "error"); b.disabled = false; }
+  });
+  $$(container + " [data-cancel]").forEach(b => b.onclick = async () => {
+    if (!confirm("Cancel this order?")) return;
+    try { await api(`/merchant/orders/${b.dataset.cancel}/status`, { method: "POST", body: { status: "cancelled" } });
+      toast("Order cancelled", "success"); reload(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+
+/* ============================================================================
+   MERCHANT DASHBOARD
+   ============================================================================ */
+async function loadRole(kind) {
+  const a = JSON.parse(localStorage.getItem("id_account") || "null");
+  if (!a || a.role !== kind) { location.hash = "#/login"; return; }
+  if (kind === "merchant") renderMerchantTab();
+  else renderAdminTab();
+}
+async function signin() {
+  try {
+    const r = await api("/auth/login", { method: "POST", body: { username: $("#loginUser").value, password: $("#loginPass").value } });
+    localStorage.id_token = r.token;
+    localStorage.id_account = JSON.stringify(r.account);
+    location.hash = "#/" + r.account.role;
+    toast("Signed in as " + r.account.full_name, "success");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+/* ---- MERCHANT: OVERVIEW ---- */
+async function mdOverview() {
+  const box = $("#merchantContent");
+  box.innerHTML = `<div class="empty"><div class="empty-emoji">⏳</div><p>Loading…</p></div>`;
+  const s = await api("/merchant/stats");
+  const low = await api("/merchant/products?stock=low&limit=50");
+  const cards = [
+    ["Today's Orders", s.today_orders, "new today"],
+    ["Today's Revenue", inr(s.today_revenue || 0), "delivered"],
+    ["Total Revenue", inr(s.total_revenue || 0), "all time"],
+    ["Avg Order Value", inr(s.avg_order_value || 0), "per order"],
+    ["Low Stock", s.low_stock, "≤ 5 units"],
+    ["Active Products", s.active_products, "in catalog"],
+  ];
+  const days = s.gmv_7d || [];
+  const max = Math.max(1, ...days.map(d => d.gmv));
+  box.innerHTML = `
+    <div class="kpi-strip">${cards.map(([l, v, sub]) => `<div class="md-kpi"><b>${v}</b><span>${l}</span><small>${sub}</small></div>`).join("")}</div>
+    <div class="admin-cols">
+      <div class="admin-card">
+        <h3>GMV — Last 7 Days <span class="te">గత 7 రోజుల విక్రయాలు</span></h3>
+        <div class="bar-chart">${days.length ? days.map(d => `
+          <div class="bar"><div class="bar-val">${inr(d.gmv)}</div><div class="bar-fill" style="height:${Math.max(4, (d.gmv / max) * 100)}%"></div><div class="bar-day">${d.day.slice(5)}</div></div>`).join("") : '<p style="color:var(--muted)">No delivered orders yet</p>'}</div>
+      </div>
+      <div class="admin-card">
+        <h3>Orders by Status</h3>
+        <div class="status-list">${(s.by_status || []).map(x => `
+          <div class="status-row"><span class="sl">${STATUS_LABEL(x.status)}</span><div class="track"><div class="fill" style="width:${(x.n / (s.orders_total || 1)) * 100}%"></div></div><span class="sv">${x.n}</span></div>`).join("") || '<p style="color:var(--muted)">No orders yet</p>'}</div>
+      </div>
+    </div>
+    <div class="admin-cols">
+      <div class="admin-card">
+        <h3>Top Products <span class="te">అత్యధిక అమ్మకాలు</span></h3>
+        <div class="rank-list">${(s.top_products || []).map((p, i) => `
+          <div class="rank-row"><span class="rk">${i + 1}</span>${img(p.image, "rk")}<span class="rn">${esc(p.name)}</span><span class="rv">${inr(p.revenue || 0)}</span></div>`).join("") || '<p style="color:var(--muted)">No sales yet</p>'}</div>
+      </div>
+      <div class="admin-card">
+        <h3>⚠️ Low Stock Alerts <span class="te">తక్కువ స్టాక్</span></h3>
+        <div class="rank-list">${low.length ? low.map(p => `
+          <div class="rank-row"><span class="rk">⚠️</span>${img(p.image, "rk")}<span class="rn">${esc(p.name)} <small style="color:var(--muted)">· ${p.category_name}</small></span>
+          <span class="rv"><b style="color:var(--red)">${p.stock} left</b> <button type="button" class="mini-btn" data-restock="${p.id}" data-stock="${p.stock}">+10</button></span></div>`).join("") : '<p style="color:var(--green)">✓ All products well stocked</p>'}</div>
+      </div>
+    </div>`;
+  $$("#merchantContent [data-restock]").forEach(b => b.onclick = async () => {
+    try { await api(`/merchant/products/${b.dataset.restock}`, { method: "PUT", body: { stock: +b.dataset.stock + 10 } });
+      toast("Restocked +10", "success"); mdOverview(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+
+/* ---- MERCHANT: PRODUCTS ---- */
+let mdProdFilter = { q: "", low: false };
+async function mdProducts() {
+  const box = $("#merchantContent");
+  box.innerHTML = `<div class="empty"><div class="empty-emoji">⏳</div><p>Loading…</p></div>`;
+  const p = new URLSearchParams();
+  if (mdProdFilter.q) p.set("q", mdProdFilter.q);
+  if (mdProdFilter.low) p.set("stock", "low");
+  const list = await api("/merchant/products?" + p);
+  const catOpts = state.categories.map(c => [c.id, c.name]);
+  box.innerHTML = `
+    <div class="md-toolbar">
+      <input class="md-search" id="mdProdSearch" placeholder="Search your products…" value="${esc(mdProdFilter.q)}">
+      <button type="button" class="chip ${mdProdFilter.low ? "active" : ""}" id="mdLowChip">⚠️ Low stock</button>
+      <button type="button" class="btn-primary" id="mdAddProd" style="margin-left:auto">+ Add Product</button>
+    </div>
+    <div class="data-table-wrap"><table class="data-table">
+      <thead><tr><th>Product</th><th>Category</th><th>Price</th><th>MRP</th><th>Stock</th><th>Status</th><th></th></tr></thead>
+      <tbody>${list.map(pr => `
+        <tr class="${pr.stock <= 5 ? "row-low" : ""}">
+          <td>${img(pr.image, "td")} <b>${esc(pr.name)}</b><br><small style="color:var(--muted)">${esc(pr.name_te || "")} · ${esc(pr.unit)}</small></td>
+          <td>${esc(pr.category_name)}</td>
+          <td><b>${inr(pr.price)}</b></td>
+          <td>${pr.mrp ? inr(pr.mrp) : "—"}</td>
+          <td>${pr.stock <= 5 ? `<b style="color:var(--red)">${pr.stock}</b>` : pr.stock}</td>
+          <td>${pr.is_active ? '<span class="tag on">Active</span>' : '<span class="tag off">Hidden</span>'}</td>
+          <td class="row-actions">
+            <button type="button" class="mini-btn" data-edit="${pr.id}">Edit</button>
+            <button type="button" class="mini-btn" data-toggle="${pr.id}" data-on="${pr.is_active}">${pr.is_active ? "Hide" : "Show"}</button>
+            <button type="button" class="mini-btn danger" data-del="${pr.id}">Delete</button>
+          </td>
+        </tr>`).join("") || `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No products found</td></tr>`}
+      </tbody>
+    </table></div>`;
+  let t;
+  $("#mdProdSearch").oninput = e => { clearTimeout(t); t = setTimeout(() => { mdProdFilter.q = e.target.value; mdProducts(); }, 300); };
+  $("#mdLowChip").onclick = () => { mdProdFilter.low = !mdProdFilter.low; mdProducts(); };
+  $("#mdAddProd").onclick = () => mdProductForm(null, catOpts);
+  $$("#merchantContent [data-edit]").forEach(b => b.onclick = () => mdProductForm(list.find(x => x.id === +b.dataset.edit), catOpts));
+  $$("#merchantContent [data-toggle]").forEach(b => b.onclick = async () => {
+    try { await api(`/merchant/products/${b.dataset.toggle}`, { method: "PUT", body: { is_active: b.dataset.on === "1" ? 0 : 1 } });
+      toast(b.dataset.on === "1" ? "Product hidden" : "Product shown", "success"); mdProducts(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+  $$("#merchantContent [data-del]").forEach(b => b.onclick = async () => {
+    if (!confirm("Delete this product? It will be hidden from the shop.")) return;
+    try { await api(`/merchant/products/${b.dataset.del}`, { method: "DELETE" }); toast("Product deleted", "success"); mdProducts(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+function mdProductForm(pr, catOpts) {
+  openCrud({
+    title: pr ? "Edit Product" : "Add Product",
+    sub: pr ? esc(pr.name) : "New product for your shop",
+    submitLabel: pr ? "Save changes" : "Add product",
+    fields: [
+      { key: "name", label: "Product name", ph: "e.g. Tomato (1 kg)" },
+      { key: "name_te", label: "Telugu name", ph: "టమాటో (1 కిలో)" },
+      { key: "category_id", label: "Category", type: "select", options: catOpts },
+      { key: "brand", label: "Brand", ph: "e.g. Nandini" },
+      { key: "unit", label: "Unit", ph: "e.g. 1 kg / 1 L / 1 pc" },
+      { key: "price", label: "Price (₹)", type: "number" },
+      { key: "mrp", label: "MRP (₹)", type: "number" },
+      { key: "stock", label: "Stock", type: "number", def: 0 },
+      { key: "image", label: "Image (emoji or /path)", ph: "🍅" },
+      { key: "is_fresh", label: "Farm fresh", type: "checkbox" },
+      { key: "is_best_seller", label: "Best seller", type: "checkbox" },
+      { key: "is_active", label: "Active (visible in shop)", type: "checkbox", def: 1 },
+    ],
+    values: pr || {},
+    onSubmit: async (v) => {
+      if (!v.name || !v.price) throw new Error("Name and price are required");
+      if (pr) await api(`/merchant/products/${pr.id}`, { method: "PUT", body: v });
+      else await api("/merchant/products", { method: "POST", body: v });
+      toast(pr ? "Product updated" : "Product added", "success");
+      mdProducts();
+    },
+  });
+}
+
+/* ---- MERCHANT: ORDERS ---- */
+let mdOrderStatus = "";
+async function mdOrders() {
+  const box = $("#merchantContent");
+  box.innerHTML = `<div class="empty"><div class="empty-emoji">⏳</div><p>Loading…</p></div>`;
+  const p = mdOrderStatus ? "?status=" + mdOrderStatus : "";
+  const list = await api("/merchant/orders" + p);
+  const chips = ["", "placed", "confirmed", "packed", "out_for_delivery", "delivered", "cancelled"];
+  box.innerHTML = `
+    <div class="subtabs" style="margin-top:0">${chips.map(c => `<button type="button" class="chip ${mdOrderStatus === c ? "active" : ""}" data-mos="${c}">${c ? STATUS_LABEL(c) : "All"}</button>`).join("")}</div>
+    <div class="orders-list">${list.map(o => orderCard(o, { advance: true })).join("") || '<div class="empty"><div class="empty-emoji">📦</div><p>No orders in this status.</p></div>'}</div>`;
+  $$("#merchantContent [data-mos]").forEach(b => b.onclick = () => { mdOrderStatus = b.dataset.mos; mdOrders(); });
+  bindOrderActions("#merchantContent .orders-list", mdOrders);
+}
+
+/* ---- MERCHANT: SHOP SETTINGS ---- */
+async function mdSettings() {
+  const box = $("#merchantContent");
+  const shop = await api("/merchant/shop");
+  const zones = state.zones;
+  let zoneIds = [];
+  try { zoneIds = JSON.parse(shop.zone_ids || "[]"); } catch (_) {}
+  box.innerHTML = `
+    <h3>Shop Profile <span class="te">వ్యాపారం సెట్టింగ్స్</span></h3>
+    <div class="form-grid">
+      <div class="field"><label>Shop name</label><input id="shName" value="${esc(shop.name)}"></div>
+      <div class="field"><label>Telugu name</label><input id="shNameTe" value="${esc(shop.name_te || "")}"></div>
+      <div class="field"><label>Phone</label><input id="shPhone" value="${esc(shop.phone || "")}"></div>
+      <div class="field"><label>Open hours</label><input id="shHours" value="${esc(shop.open_hours || "")}"></div>
+      <div class="field full"><label>Address</label><textarea id="shAddr" rows="2">${esc(shop.address || "")}</textarea></div>
+    </div>
+    <h4 style="margin:18px 0 8px">Delivery zones served (${zoneIds.length} selected)</h4>
+    <div class="zone-checks">${zones.map(z => `<label class="zchk"><input type="checkbox" data-z="${z.id}" ${zoneIds.includes(z.id) ? "checked" : ""}> ${esc(z.name)} <small>(${z.type})</small></label>`).join("")}</div>
+    <div class="crud-actions"><button type="button" class="btn-primary" id="shSave">Save shop settings</button></div>`;
+  $("#shSave").onclick = async () => {
+    const sel = $$("#merchantContent .zchk input:checked").map(i => +i.dataset.z);
+    try {
+      await api("/merchant/shop", { method: "PUT", body: {
+        name: $("#shName").value, name_te: $("#shNameTe").value, phone: $("#shPhone").value,
+        open_hours: $("#shHours").value, address: $("#shAddr").value, zone_ids: JSON.stringify(sel),
+      }});
+      toast("Shop settings saved", "success");
+    } catch (e) { toast(e.message, "error"); }
+  };
+}
+
+function renderMerchantTab() {
+  const map = { overview: mdOverview, products: mdProducts, orders: mdOrders, settings: mdSettings };
+  (map[state.mdTab] || mdOverview)();
+}
+
+/* ============================================================================
+   ADMIN DASHBOARD
+   ============================================================================ */
+async function renderAdminTab() {
+  const map = { overview: adOverview, merchants: adMerchants, orders: adOrders, customers: adCustomers, catalog: adCatalog, promos: adPromos, delivery: adDelivery };
+  (map[state.adTab] || adOverview)();
+}
+
+/* ---- ADMIN: OVERVIEW ---- */
+async function adOverview() {
+  const box = $("#adminContent");
+  box.innerHTML = `<div class="empty"><div class="empty-emoji">⏳</div><p>Loading…</p></div>`;
+  const s = await api("/admin/stats");
+  const [cats, prods] = await Promise.all([api("/stats").catch(() => ({})), api("/admin/products").catch(() => [])]);
+  const cards = [
+    ["GMV (Delivered)", inr(s.gmv || 0), "total revenue"],
+    ["Orders", s.orders_total, s.orders_today + " today"],
+    ["Customers", s.customers, s.plus_members + " Plus"],
+    ["Merchants", s.merchants, "active shops"],
+    ["Products", s.products, "in catalog"],
+    ["Avg Order Value", inr(s.aov || 0), "per order"],
+    ["Completion Rate", s.completion_rate + "%", "delivered"],
+    ["Avg Delivery", s.avg_delivery_time + " min", "placed→delivered"],
+  ];
+  const days = s.gmv_7d || [];
+  const max = Math.max(1, ...days.map(d => d.gmv));
+  box.innerHTML = `
+    <div class="stat-cards">${cards.map(([l, v, sub]) => `<div class="stat-card"><div class="sc-label">${l}</div><div class="sc-val">${v}</div><div class="sc-sub">${sub}</div></div>`).join("")}</div>
+    <div class="admin-cols">
+      <div class="admin-card"><h3>GMV — Last 7 Days</h3>
+        <div class="bar-chart">${days.length ? days.map(d => `<div class="bar"><div class="bar-val">${inr(d.gmv)}</div><div class="bar-fill" style="height:${Math.max(4, (d.gmv / max) * 100)}%"></div><div class="bar-day">${d.day.slice(5)}</div></div>`).join("") : '<p style="color:var(--muted)">No data</p>'}</div></div>
+      <div class="admin-card"><h3>Orders by Status</h3>
+        <div class="status-list">${(s.by_status || []).map(x => `<div class="status-row"><span class="sl">${STATUS_LABEL(x.status)}</span><div class="track"><div class="fill" style="width:${(x.n / (s.orders_total || 1)) * 100}%"></div></div><span class="sv">${x.n}</span></div>`).join("")}</div></div>
+    </div>
+    <div class="admin-cols">
+      <div class="admin-card"><h3>Revenue by Merchant <span class="te">వ్యాపారాల ఆదాయం</span></h3>
+        <div class="rank-list">${(s.merchant_revenue || []).map((m, i) => `<div class="rank-row"><span class="rk">${i + 1}</span><span class="rn">🏪 ${esc(m.name)}</span><span class="rv">${inr(m.revenue || 0)} <small>· ${m.orders} orders</small></span></div>`).join("")}</div></div>
+      <div class="admin-card"><h3>Top Categories</h3>
+        <div class="rank-list">${(cats.top_categories || []).map((c, i) => `<div class="rank-row"><span class="rk">${i + 1}</span><span class="rn">${esc(c.name)}</span><span class="rv">${inr(c.revenue || 0)}</span></div>`).join("") || '<p style="color:var(--muted)">No data</p>'}</div></div>
+    </div>`;
+}
+
+/* ---- ADMIN: MERCHANTS ---- */
+async function adMerchants() {
+  const box = $("#adminContent");
+  box.innerHTML = `<div class="empty"><div class="empty-emoji">⏳</div><p>Loading…</p></div>`;
+  const list = await api("/admin/merchants");
+  box.innerHTML = `
+    <div class="md-toolbar"><h3 style="margin:0">Shops on Platform</h3><button type="button" class="btn-primary" id="adAddMerchant" style="margin-left:auto">+ Add Merchant</button></div>
+    <div class="data-table-wrap"><table class="data-table">
+      <thead><tr><th>Shop</th><th>Products</th><th>Revenue</th><th>Active Orders</th><th>Status</th><th></th></tr></thead>
+      <tbody>${list.map(m => `
+        <tr>
+          <td><b>${esc(m.name)}</b>${m.is_default ? ' <span class="tag on">Flagship</span>' : ""}<br><small style="color:var(--muted)">${esc(m.phone || "")} · ${esc(m.address || "")}</small></td>
+          <td>${m.product_count}</td>
+          <td><b>${inr(m.revenue || 0)}</b></td>
+          <td>${m.active_orders || 0}</td>
+          <td>${m.is_active ? '<span class="tag on">Active</span>' : '<span class="tag off">Disabled</span>'}</td>
+          <td class="row-actions">
+            <button type="button" class="mini-btn" data-medit="${m.id}">Edit</button>
+            <button type="button" class="mini-btn ${m.is_active ? "danger" : ""}" data-mtoggle="${m.id}" data-on="${m.is_active}">${m.is_active ? "Disable" : "Enable"}</button>
+          </td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div>`;
+  $("#adAddMerchant").onclick = () => adMerchantForm(null);
+  $$("#adminContent [data-medit]").forEach(b => b.onclick = () => adMerchantForm(list.find(x => x.id === +b.dataset.medit)));
+  $$("#adminContent [data-mtoggle]").forEach(b => b.onclick = async () => {
+    try { await api(`/admin/merchants/${b.dataset.mtoggle}`, { method: "PUT", body: { is_active: b.dataset.on === "1" ? 0 : 1 } });
+      toast("Merchant updated", "success"); adMerchants(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+function adMerchantForm(m) {
+  openCrud({
+    title: m ? "Edit Merchant" : "Add Merchant",
+    submitLabel: m ? "Save" : "Add merchant",
+    fields: [
+      { key: "name", label: "Shop name" },
+      { key: "name_te", label: "Telugu name" },
+      { key: "phone", label: "Phone" },
+      { key: "address", label: "Address" },
+      { key: "open_hours", label: "Open hours", def: "7:00 AM – 10:00 PM" },
+      { key: "is_active", label: "Active", type: "checkbox", def: 1 },
+    ],
+    values: m || {},
+    onSubmit: async (v) => {
+      if (!v.name) throw new Error("Name is required");
+      if (m) await api(`/admin/merchants/${m.id}`, { method: "PUT", body: v });
+      else await api("/admin/merchants", { method: "POST", body: v });
+      toast(m ? "Merchant updated" : "Merchant added", "success"); adMerchants();
+    },
+  });
+}
+
+/* ---- ADMIN: ORDERS ---- */
+let adOrderStatus = "";
+async function adOrders() {
+  const box = $("#adminContent");
+  box.innerHTML = `<div class="empty"><div class="empty-emoji">⏳</div><p>Loading…</p></div>`;
+  const list = await api("/admin/orders");
+  const filtered = adOrderStatus ? list.filter(o => o.status === adOrderStatus) : list;
+  const chips = ["", "placed", "confirmed", "packed", "out_for_delivery", "delivered", "cancelled"];
+  box.innerHTML = `
+    <div class="subtabs" style="margin-top:0">${chips.map(c => `<button type="button" class="chip ${adOrderStatus === c ? "active" : ""}" data-aos="${c}">${c ? STATUS_LABEL(c) : "All (" + list.length + ")"}</button>`).join("")}</div>
+    <div class="orders-list">${filtered.map(o => orderCard(o, { withMerchant: true, advance: true })).join("") || '<div class="empty"><div class="empty-emoji">📦</div><p>No orders.</p></div>'}</div>`;
+  $$("#adminContent [data-aos]").forEach(b => b.onclick = () => { adOrderStatus = b.dataset.aos; adOrders(); });
+  // admin advance uses admin endpoint
+  $$("#adminContent [data-next]").forEach(b => b.onclick = async () => {
+    const [id, st] = b.dataset.next.split(":"); b.disabled = true;
+    try { await api(`/admin/orders/${id}/status`, { method: "POST", body: { status: st } });
+      toast("Order → " + STATUS_LABEL(st), "success"); adOrders(); }
+    catch (e) { toast(e.message, "error"); b.disabled = false; }
+  });
+  $$("#adminContent [data-cancel]").forEach(b => b.onclick = async () => {
+    if (!confirm("Cancel this order?")) return;
+    try { await api(`/admin/orders/${b.dataset.cancel}/status`, { method: "POST", body: { status: "cancelled" } });
+      toast("Order cancelled", "success"); adOrders(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+
+/* ---- ADMIN: CUSTOMERS ---- */
+async function adCustomers() {
+  const box = $("#adminContent");
+  box.innerHTML = `<div class="empty"><div class="empty-emoji">⏳</div><p>Loading…</p></div>`;
+  const list = await api("/admin/users");
+  box.innerHTML = `
+    <h3>Customers <span class="te">కస్టమర్ల వివరాలు</span></h3>
+    <div class="data-table-wrap"><table class="data-table">
+      <thead><tr><th>Customer</th><th>Phone</th><th>Orders</th><th>Total Spent</th><th>Plus</th><th>Active</th><th></th></tr></thead>
+      <tbody>${list.map(u => `
+        <tr>
+          <td><b>${esc(u.full_name)}</b></td>
+          <td>${esc(u.phone || "")}</td>
+          <td>${u.order_count || 0}</td>
+          <td><b>${inr(u.total_spent || 0)}</b></td>
+          <td>${u.is_plus ? '<span class="tag on">⭐ Plus</span>' : "—"}</td>
+          <td>${u.is_active ? '<span class="tag on">Active</span>' : '<span class="tag off">Disabled</span>'}</td>
+          <td class="row-actions">
+            <button type="button" class="mini-btn" data-uplus="${u.id}" data-on="${u.is_plus}">${u.is_plus ? "Remove Plus" : "Make Plus"}</button>
+            <button type="button" class="mini-btn ${u.is_active ? "danger" : ""}" data-uact="${u.id}" data-on="${u.is_active}">${u.is_active ? "Disable" : "Enable"}</button>
+          </td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div>`;
+  $$("#adminContent [data-uplus]").forEach(b => b.onclick = async () => {
+    try { await api(`/admin/users/${b.dataset.uplus}`, { method: "PUT", body: { is_plus: b.dataset.on === "1" ? 0 : 1 } });
+      toast("Customer updated", "success"); adCustomers(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+  $$("#adminContent [data-uact]").forEach(b => b.onclick = async () => {
+    try { await api(`/admin/users/${b.dataset.uact}`, { method: "PUT", body: { is_active: b.dataset.on === "1" ? 0 : 1 } });
+      toast("Customer updated", "success"); adCustomers(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+
+/* ---- ADMIN: CATALOG ---- */
+async function adCatalog() {
+  const box = $("#adminContent");
+  box.innerHTML = `<div class="empty"><div class="empty-emoji">⏳</div><p>Loading…</p></div>`;
+  const list = await api("/admin/products");
+  box.innerHTML = `
+    <h3>All Products (all shops) <span class="te">అన్ని ఉత్పత్తులు</span></h3>
+    <div class="data-table-wrap"><table class="data-table">
+      <thead><tr><th>Product</th><th>Shop</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th></tr></thead>
+      <tbody>${list.map(p => `
+        <tr class="${p.stock <= 5 ? "row-low" : ""}">
+          <td>${img(p.image, "td")} <b>${esc(p.name)}</b></td>
+          <td>${esc(p.merchant_name || "—")}</td>
+          <td>${esc(p.category_name)}</td>
+          <td><b>${inr(p.price)}</b></td>
+          <td>${p.stock <= 5 ? `<b style="color:var(--red)">${p.stock}</b>` : p.stock}</td>
+          <td>${p.is_active ? '<span class="tag on">Active</span>' : '<span class="tag off">Hidden</span>'}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div>
+    <p style="color:var(--muted);font-size:13px;margin-top:10px">Edit products from the Merchant dashboard (per-shop) or via API. ${list.length} products total.</p>`;
+}
+
+/* ---- ADMIN: PROMOTIONS ---- */
+async function adPromos() {
+  const box = $("#adminContent");
+  box.innerHTML = `<div class="empty"><div class="empty-emoji">⏳</div><p>Loading…</p></div>`;
+  const list = await api("/admin/promos");
+  box.innerHTML = `
+    <div class="md-toolbar"><h3 style="margin:0">Promotions</h3><button type="button" class="btn-primary" id="adAddPromo" style="margin-left:auto">+ Add Promo</button></div>
+    <div class="data-table-wrap"><table class="data-table">
+      <thead><tr><th>Code</th><th>Description</th><th>Discount</th><th>Min Order</th><th>Status</th><th></th></tr></thead>
+      <tbody>${list.map(p => `
+        <tr>
+          <td><b>${esc(p.code)}</b></td>
+          <td>${esc(p.description)}</td>
+          <td>${p.discount_type === "flat" ? inr(p.discount_value) : p.discount_value + "%"}${p.max_discount ? " (max " + inr(p.max_discount) + ")" : ""}</td>
+          <td>${inr(p.min_order)}</td>
+          <td>${p.is_active ? '<span class="tag on">Active</span>' : '<span class="tag off">Inactive</span>'}</td>
+          <td class="row-actions"><button type="button" class="mini-btn ${p.is_active ? "danger" : ""}" data-pact="${p.id}" data-on="${p.is_active}">${p.is_active ? "Disable" : "Enable"}</button></td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div>`;
+  $("#adAddPromo").onclick = () => adPromoForm(null);
+  $$("#adminContent [data-pact]").forEach(b => b.onclick = async () => {
+    try { await api(`/admin/promos/${b.dataset.pact}`, { method: "PUT", body: { is_active: b.dataset.on === "1" ? 0 : 1 } });
+      toast("Promo updated", "success"); adPromos(); }
+    catch (e) { toast(e.message, "error"); }
+  });
+}
+function adPromoForm() {
+  openCrud({
+    title: "Add Promotion",
+    submitLabel: "Create promo",
+    fields: [
+      { key: "code", label: "Code", ph: "e.g. WELCOME50" },
+      { key: "description", label: "Description", ph: "₹50 off on first order" },
+      { key: "discount_type", label: "Type", type: "select", options: [["flat", "Flat ₹"], ["percent", "Percentage %"]] },
+      { key: "discount_value", label: "Value (₹ or %)", type: "number" },
+      { key: "min_order", label: "Min order (₹)", type: "number", def: 0 },
+      { key: "max_discount", label: "Max discount (₹, for %)", type: "number" },
+      { key: "is_active", label: "Active", type: "checkbox", def: 1 },
+    ],
+    onSubmit: async (v) => {
+      if (!v.code || !v.discount_value) throw new Error("Code and value are required");
+      await api("/admin/promos", { method: "POST", body: v });
+      toast("Promo created", "success"); adPromos();
+    },
+  });
+}
+
+/* ---- ADMIN: ZONES & DELIVERY ---- */
+async function adDelivery() {
+  const box = $("#adminContent");
+  box.innerHTML = `<div class="empty"><div class="empty-emoji">⏳</div><p>Loading…</p></div>`;
+  const [zones, persons, suppliers] = await Promise.all([api("/admin/zones"), api("/admin/delivery-persons"), api("/admin/suppliers")]);
+  box.innerHTML = `
+    <div class="admin-cols">
+      <div class="admin-card">
+        <h3>Delivery Zones (${zones.length}) <span class="te">డెలివరీ జోన్లు</span></h3>
+        <div class="data-table-wrap" style="max-height:340px;overflow:auto"><table class="data-table">
+          <thead><tr><th>Zone</th><th>Type</th><th>Fee</th><th>SLA</th><th></th></tr></thead>
+          <tbody>${zones.map(z => `
+            <tr>
+              <td><b>${esc(z.name)}</b></td><td>${z.type}</td>
+              <td><input class="mini-input" data-fee="${z.id}" type="number" value="${z.delivery_fee}"></td>
+              <td><input class="mini-input" data-sla="${z.id}" type="number" value="${z.sla_minutes}"></td>
+              <td><button type="button" class="mini-btn" data-zsave="${z.id}">Save</button></td>
+            </tr>`).join("")}
+          </tbody>
+        </table></div>
+      </div>
+      <div class="admin-card">
+        <h3>Delivery Persons (${persons.length})</h3>
+        <div class="rank-list">${persons.map(p => `<div class="rank-row"><span class="rk">🚴</span><span class="rn">${esc(p.name)} <small>· ${esc(p.vehicle || "")}</small></span><span class="rv">${esc(p.phone || "")}</span></div>`).join("") || '<p style="color:var(--muted)">None</p>'}</div>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="field"><label>Name</label><input id="dpName"></div>
+          <div class="field"><label>Phone</label><input id="dpPhone"></div>
+          <div class="field"><label>Vehicle</label><select id="dpVehicle"><option value="bike">Bike</option><option value="tempo">Tempo</option></select></div>
+          <div class="field"><label>Zone</label><select id="dpZone">${zones.map(z => `<option value="${z.id}">${esc(z.name)}</option>`).join("")}</select></div>
+        </div>
+        <button type="button" class="btn-primary" id="dpAdd" style="margin-top:10px">+ Add Delivery Person</button>
+      </div>
+    </div>
+    <div class="admin-card" style="margin-top:16px">
+      <h3>Suppliers — Mandi & Farms (${suppliers.length})</h3>
+      <div class="supplier-grid">${suppliers.map(s => `<div class="supplier-card"><span class="st">${esc(s.type)}</span><b>${esc(s.name)}</b><small>📍 ${esc(s.location || "")}</small><small>📞 ${esc(s.phone || "")}</small></div>`).join("")}</div>
+      <div class="form-grid" style="margin-top:12px">
+        <div class="field"><label>Supplier name</label><input id="supName"></div>
+        <div class="field"><label>Type</label><select id="supType"><option value="mandi">Mandi</option><option value="farm">Farm</option><option value="wholesaler">Wholesaler</option><option value="distributor">Distributor</option></select></div>
+        <div class="field"><label>Location</label><input id="supLoc"></div>
+        <div class="field"><label>Phone</label><input id="supPhone"></div>
+      </div>
+      <button type="button" class="btn-primary" id="supAdd" style="margin-top:10px">+ Add Supplier</button>
+    </div>`;
+  $$("#adminContent [data-zsave]").forEach(b => b.onclick = async () => {
+    const id = b.dataset.zsave;
+    const fee = $(`#adminContent [data-fee="${id}"]`).value;
+    const sla = $(`#adminContent [data-sla="${id}"]`).value;
+    try { await api(`/admin/zones/${id}`, { method: "PUT", body: { delivery_fee: Number(fee), sla_minutes: Number(sla) } });
+      toast("Zone updated", "success"); }
+    catch (e) { toast(e.message, "error"); }
+  });
+  $("#dpAdd").onclick = async () => {
+    try { await api("/admin/delivery-persons", { method: "POST", body: { name: $("#dpName").value, phone: $("#dpPhone").value, vehicle: $("#dpVehicle").value, zone_id: +$("#dpZone").value } });
+      toast("Delivery person added", "success"); adDelivery(); }
+    catch (e) { toast(e.message, "error"); }
+  };
+  $("#supAdd").onclick = async () => {
+    try { await api("/admin/suppliers", { method: "POST", body: { name: $("#supName").value, type: $("#supType").value, location: $("#supLoc").value, phone: $("#supPhone").value } });
+      toast("Supplier added", "success"); adDelivery(); }
+    catch (e) { toast(e.message, "error"); }
+  };
+}
+
 /* ---------------- ROUTER ---------------- */
 function route() {
   const hash = location.hash.replace("#/", "") || "home";
   const tab = hash.split("/")[0];
-  const views = { home: "home", mandi: "mandi", orders: "orders", admin: "admin" };
+  const views = { home: "home", mandi: "mandi", orders: "orders", admin: "admin", merchant:"merchant", login:"login" };
   $$(".view").forEach(v => v.classList.remove("active"));
   const viewEl = $("#view-" + (views[tab] || "home"));
   if (viewEl) viewEl.classList.add("active");
   $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
   if (tab === "mandi") loadMandi();
   if (tab === "orders") loadUsers();
-  if (tab === "admin") loadAdmin();
+  if (tab === "admin") loadRole("admin");
+  if (tab === "merchant") loadRole("merchant");
   if (tab === "home") renderProducts();
   window.scrollTo(0, 0);
+}
+function bindSubtabs(sel, attr, tabKey, reload) {
+  $$(sel).forEach(b => b.onclick = () => {
+    $$(sel).forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    state[tabKey] = b.dataset[attr];
+    reload();
+  });
 }
 
 /* ---------------- INIT ---------------- */
@@ -794,6 +1339,17 @@ async function init() {
       updateLang();
       toast(state.lang === "te" ? "తెలుగులో చూస్తున్నారు" : "Showing in English", "success");
     };
+
+    $("#loginSubmit").onclick = signin;
+    $$(".demo-login").forEach(b=>b.onclick=()=>{$("#loginUser").value=b.dataset.user;$("#loginPass").value=b.dataset.pass;});
+    $$(".signout").forEach(b=>b.onclick=()=>{localStorage.removeItem("id_token");localStorage.removeItem("id_account");location.hash="#/login";});
+
+    // dashboard sub-tabs
+    bindSubtabs("#merchantSubtabs .chip", "mtab", "mdTab", renderMerchantTab);
+    bindSubtabs("#adminSubtabs .chip", "atab", "adTab", renderAdminTab);
+    // generic CRUD modal
+    $("#crudClose").onclick = closeCrud;
+    $("#crudOverlay").onclick = (e) => { if (e.target.id === "crudOverlay") closeCrud(); };
 
     // router
     window.addEventListener("hashchange", route);

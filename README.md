@@ -121,3 +121,13 @@ infinity-delivery/
 - **COD + UPI** — both remain important in a Tier-3 town.
 
 *Built for the Vijayawada–Chilakaluripet growth corridor. 🚀*
+## Role dashboards
+
+The app includes role-protected Merchant and Main Admin dashboards. Demo credentials:
+
+| Role | Username | Password |
+| --- | --- | --- |
+| Main Admin | `admin` | `admin123` |
+| Merchant | `merchant` | `merchant123` |
+
+The database is migrated safely at application startup; migrations can be run repeatedly without losing existing catalog or order data.

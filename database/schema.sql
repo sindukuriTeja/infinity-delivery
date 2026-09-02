@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS products (
     is_fresh      INTEGER DEFAULT 0,    -- 1 = farm-fresh (mandi-sourced)
     is_best_seller INTEGER DEFAULT 0,
     is_active     INTEGER DEFAULT 1,
-    created_at    TEXT    DEFAULT (datetime('now'))
+    created_at    TEXT    DEFAULT (datetime('now')),
+    merchant_id   INTEGER REFERENCES merchants(id) DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_products_name     ON products(name);
@@ -76,7 +77,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT,
     is_plus       INTEGER DEFAULT 0,    -- Infinity Plus member
     is_active     INTEGER DEFAULT 1,
-    created_at    TEXT    DEFAULT (datetime('now'))
+    created_at    TEXT    DEFAULT (datetime('now')),
+    role          TEXT DEFAULT 'customer'
 );
 
 CREATE TABLE IF NOT EXISTS addresses (
@@ -132,7 +134,8 @@ CREATE TABLE IF NOT EXISTS orders (
     payment_status TEXT DEFAULT 'pending',
     promo_code    TEXT,
     placed_at     TEXT    DEFAULT (datetime('now')),
-    delivered_at  TEXT
+    delivered_at  TEXT,
+    merchant_id   INTEGER REFERENCES merchants(id) DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_orders_user   ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
@@ -195,3 +198,20 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     expires_at    TEXT,
     is_active     INTEGER DEFAULT 1
 );
+-- Role-based merchant and platform administration
+CREATE TABLE IF NOT EXISTS merchants (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, name_te TEXT, phone TEXT, address TEXT,
+ zone_ids TEXT, open_hours TEXT DEFAULT '7:00 AM – 10:00 PM', is_active INTEGER DEFAULT 1,
+ is_default INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS accounts (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+ full_name TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','merchant')),
+ merchant_id INTEGER REFERENCES merchants(id), is_active INTEGER DEFAULT 1,
+ created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS sessions (
+ token TEXT PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+ created_at TEXT DEFAULT (datetime('now')), expires_at TEXT NOT NULL
+);
+-- New installations receive these columns; app.py safely migrates existing databases.
