@@ -64,13 +64,13 @@ function saveCart() { localStorage.setItem("id_cart", JSON.stringify(state.cart)
 function cartCount() { return state.cart.reduce((a, c) => a + c.qty, 0); }
 function cartSubtotal() {
   return state.cart.reduce((a, c) => {
-    const p = state.products.find(x => x.id === c.id);
+    const p = findProduct(c.id);
     return a + (p ? p.price * c.qty : 0);
   }, 0);
 }
 function cartMrp() {
   return state.cart.reduce((a, c) => {
-    const p = state.products.find(x => x.id === c.id);
+    const p = findProduct(c.id);
     return a + (p ? (p.mrp || p.price) * c.qty : 0);
   }, 0);
 }
@@ -78,7 +78,7 @@ function addToCart(id) {
   const it = state.cart.find(c => c.id === id);
   if (it) { it.qty++; } else { state.cart.push({ id, qty: 1 }); }
   saveCart(); renderCartBadge(); renderCart();
-  const p = state.products.find(x => x.id === id);
+  const p = findProduct(id);
   if (p) toast("Added " + p.name + " to cart", "success");
 }
 function setQty(id, qty) {
@@ -117,59 +117,68 @@ function renderPromos() {
     </div>`).join("");
 }
 
-/* ---------------- RENDER: SHOP (shop name + details, then its products) ---------------- */
-function renderShop() {
-  const head = $("#shopHead"), tabs = $("#shopTabs");
-  if (!head) return;
-  const shop = state.shops.find(s => s.id === state.activeShop) || state.shops[0];
-  if (!shop) { head.innerHTML = ""; tabs.innerHTML = ""; return; }
-  state.activeShop = shop.id;
-  const zones = Array.isArray(shop.zone_ids) ? shop.zone_ids : [];
-  head.innerHTML = `
-    <div class="shop-ident">
-      <div class="shop-logo">🏪</div>
-      <div class="shop-ident-txt">
-        <div class="shop-name">${shop.name}${shop.is_default ? ' <span class="shop-flag">Flagship</span>' : ""}</div>
-        <div class="shop-name-te">${shop.name_te || ""}</div>
-        <div class="shop-meta">
-          <span class="shop-chip">🕒 ${shop.open_hours || "7:00 AM – 10:00 PM"}</span>
-          ${shop.phone ? `<span class="shop-chip">📞 ${shop.phone}</span>` : ""}
-          ${shop.address ? `<span class="shop-chip">📍 ${shop.address}</span>` : ""}
-          <span class="shop-chip">🚚 ${zones.length} zones</span>
-        </div>
-      </div>
-    </div>
-    <div class="shop-count">${shop.product_count || 0} products</div>`;
-  // shop switcher tabs (shown when there is more than one shop)
-  if (state.shops.length > 1) {
-    tabs.innerHTML = state.shops.map(s => `
-      <button type="button" class="shop-tab ${s.id === shop.id ? "active" : ""}" data-shop="${s.id}">
-        <span class="st-name">${s.name}</span><span class="st-count">${s.product_count || 0}</span>
-      </button>`).join("");
-    $$("#shopTabs .shop-tab").forEach(b => b.onclick = () => {
-      state.activeShop = +b.dataset.shop;
-      state.activeCat = "all"; state.filter = "all"; state.search = "";
-      $("#searchInput").value = "";
-      renderShop(); renderCategories(); loadProducts();
-    });
-  } else {
-    tabs.innerHTML = "";
-  }
-}
-
-/* ---------------- RENDER: CATEGORIES ---------------- */
-function renderCategories() {
-  const all = [{ id: 0, name: "All", name_te: "అందటి", slug: "all", icon: "🛒", product_count: state.products.length }];
+/* ---------------- RENDER: SHOP SECTIONS (shop 1 + its products, shop 2 + its products, …) ---------------- */
+function shopCatChips(shop) {
+  const all = [{ id: 0, name: "All", name_te: "అందటి", slug: "all", icon: "🛒", product_count: (shop._products || []).length }];
   const list = all.concat(state.categories);
-  $("#catChips").innerHTML = list.map(c => `
-    <button type="button" class="cat-chip ${state.activeCat === c.slug ? "active" : ""}" data-cat="${c.slug}">
+  return list.map(c => `
+    <button type="button" class="cat-chip ${shop._cat === "all" ? "active" : ""}" data-cat="${c.slug}">
       <span class="ci">${c.icon}</span>
       <span class="cn">${c.name}</span>
     </button>`).join("");
-  $$("#catChips .cat-chip").forEach(b => b.onclick = () => {
-    state.activeCat = b.dataset.cat;
-    renderCategories(); loadProducts();
+}
+
+function shopSection(shop) {
+  const zones = Array.isArray(shop.zone_ids) ? shop.zone_ids : [];
+  return `
+  <div class="shop-section" id="shop-sec-${shop.id}">
+    <div class="shop-head">
+      <div class="shop-ident">
+        <div class="shop-logo">🏪</div>
+        <div class="shop-ident-txt">
+          <div class="shop-name">${shop.name}${shop.is_default ? ' <span class="shop-flag">Flagship</span>' : ""}</div>
+          <div class="shop-name-te">${shop.name_te || ""}</div>
+          <div class="shop-meta">
+            <span class="shop-chip">🕒 ${shop.open_hours || "7:00 AM – 10:00 PM"}</span>
+            ${shop.phone ? `<span class="shop-chip">📞 ${shop.phone}</span>` : ""}
+            ${shop.address ? `<span class="shop-chip">📍 ${shop.address}</span>` : ""}
+            <span class="shop-chip">🚚 ${zones.length} zones</span>
+          </div>
+        </div>
+      </div>
+      <div class="shop-count">${shop.product_count || 0} products</div>
+    </div>
+    <div class="cat-chips shop-cats" id="shop-cats-${shop.id}">${shopCatChips(shop)}</div>
+    <div class="grid" id="shop-grid-${shop.id}"></div>
+    <div class="empty shop-empty" id="shop-empty-${shop.id}" hidden>
+      <div class="empty-emoji">🔍</div>
+      <p>No products found in this shop.</p>
+    </div>
+  </div>`;
+}
+
+function renderShopSections() {
+  const wrap = $("#shopSections");
+  if (!wrap) return;
+  if (!state.shops.length) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = state.shops.map(shopSection).join("");
+  state.shops.forEach(shop => {
+    $$("#shop-cats-" + shop.id + " .cat-chip").forEach(b => b.onclick = () => {
+      shop._cat = b.dataset.cat;
+      $$("#shop-cats-" + shop.id + " .cat-chip").forEach(x => x.classList.toggle("active", x === b));
+      renderProducts(shop);
+    });
   });
+  state.shops.forEach(loadProducts);
+}
+
+/* Find a product anywhere (cart needs it across shops). */
+function findProduct(id) {
+  for (const s of state.shops) {
+    const p = (s._products || []).find(x => x.id === id);
+    if (p) return p;
+  }
+  return null;
 }
 
 /* ---------------- RENDER: PRODUCTS ---------------- */
@@ -206,9 +215,13 @@ function productCard(p) {
     </div>
   </div>`;
 }
-function renderProducts() {
-  let list = state.products.slice();
-  if (state.activeCat !== "all") list = list.filter(p => p.category_slug === state.activeCat);
+function renderProducts(shop) {
+  if (!shop) return;
+  const grid = $("#shop-grid-" + shop.id);
+  if (!grid) return;
+  const cat = shop._cat || "all";
+  let list = (shop._products || []).slice();
+  if (cat !== "all") list = list.filter(p => p.category_slug === cat);
   if (state.filter === "fresh") list = list.filter(p => p.is_fresh);
   else if (state.filter === "best") list = list.filter(p => p.is_best_seller);
   else if (state.filter === "offers") list = list.filter(p => p.mrp && p.mrp > p.price);
@@ -217,37 +230,32 @@ function renderProducts() {
     list = list.filter(p => p.name.toLowerCase().includes(q) ||
       (p.name_te || "").includes(state.search) || (p.brand || "").toLowerCase().includes(q));
   }
-  $("#productGrid").innerHTML = list.map(productCard).join("");
-  $("#resultsCount").textContent = list.length + " items";
-  $("#emptyState").hidden = list.length > 0;
-  $("#productGrid").style.display = list.length ? "" : "none";
-
-  const titles = { all: "All Products", fresh: "Farm Fresh", best: "Best Sellers", offers: "Offers" };
-  $("#resultsTitle").textContent = state.activeCat === "all"
-    ? (titles[state.filter] || "All Products")
-    : (state.categories.find(c => c.slug === state.activeCat) || {}).name || "Products";
+  grid.innerHTML = list.map(productCard).join("");
+  $("#shop-empty-" + shop.id).hidden = list.length > 0;
+  grid.style.display = list.length ? "" : "none";
 
   // bind button events
-  $$("#productGrid [data-add]").forEach(b => b.onclick = e => { e.stopPropagation(); addToCart(+b.dataset.add); });
-  $$("#productGrid [data-inc]").forEach(b => b.onclick = e => { e.stopPropagation(); addToCart(+b.dataset.inc); });
-  $$("#productGrid [data-dec]").forEach(b => b.onclick = e => {
+  $$(`#shop-grid-${shop.id} [data-add]`).forEach(b => b.onclick = e => { e.stopPropagation(); addToCart(+b.dataset.add); });
+  $$(`#shop-grid-${shop.id} [data-inc]`).forEach(b => b.onclick = e => { e.stopPropagation(); addToCart(+b.dataset.inc); });
+  $$(`#shop-grid-${shop.id} [data-dec]`).forEach(b => b.onclick = e => {
     e.stopPropagation();
     const it = state.cart.find(c => c.id === +b.dataset.dec);
     if (it) setQty(+b.dataset.dec, it.qty - 1);
   });
-  $$("#productGrid .p-card").forEach(c => c.onclick = () => openProduct(+c.dataset.pid));
+  $$(`#shop-grid-${shop.id} .p-card`).forEach(c => c.onclick = () => openProduct(+c.dataset.pid));
 }
-async function loadProducts() {
+async function loadProducts(shop) {
+  if (!shop) return;
   const p = new URLSearchParams();
-  if (state.activeShop) p.set("shop", state.activeShop);
-  if (state.activeCat !== "all") p.set("category", state.activeCat);
+  p.set("shop", shop.id);
+  if ((shop._cat || "all") !== "all") p.set("category", shop._cat);
   if (state.filter === "fresh") p.set("fresh", "1");
   if (state.filter === "best") p.set("best", "1");
   if (state.search) p.set("q", state.search);
   p.set("sort", state.sort);
   p.set("limit", "200");
-  state.products = await api("/products?" + p);
-  renderProducts();
+  shop._products = await api("/products?" + p);
+  renderProducts(shop);
 }
 
 /* ---------------- RENDER: CART ---------------- */
@@ -259,7 +267,7 @@ function renderCart() {
     return;
   }
   body.innerHTML = state.cart.map(c => {
-    const p = state.products.find(x => x.id === c.id);
+    const p = findProduct(c.id);
     if (!p) return "";
     return `
     <div class="cart-item">
@@ -1284,7 +1292,7 @@ function route() {
   if (tab === "orders") loadUsers();
   if (tab === "admin") loadRole("admin");
   if (tab === "merchant") loadRole("merchant");
-  if (tab === "home") renderProducts();
+  if (tab === "home" && state.shops.length) state.shops.forEach(loadProducts);
   window.scrollTo(0, 0);
 }
 function bindSubtabs(sel, attr, tabKey, reload) {
@@ -1299,17 +1307,15 @@ function bindSubtabs(sel, attr, tabKey, reload) {
 /* ---------------- INIT ---------------- */
 async function init() {
   try {
-    const [cats, prods, promos, zones, users, shops] = await Promise.all([
-      api("/categories"), api("/products?limit=200"), api("/promos"), api("/zones"), api("/users"),
+    const [cats, promos, zones, users, shops] = await Promise.all([
+      api("/categories"), api("/promos"), api("/zones"), api("/users"),
       api("/shops").catch(() => []),
     ]);
     state.categories = cats;
-    state.products = prods;
     state.promos = promos;
     state.zones = zones;
     state.users = users.map(u => ({ id: u.id, name: u.full_name, plus: !!u.is_plus }));
-    state.shops = shops;
-    if (shops.length) state.activeShop = shops[0].id;
+    state.shops = shops.map(s => ({ ...s, _cat: "all", _products: [] }));
 
     // set default zone if none saved
     if (!state.zone && zones.length) {
@@ -1323,40 +1329,38 @@ async function init() {
 
     renderHeroStats();
     renderPromos();
-    renderShop();
-    renderCategories();
-    renderProducts();
+    renderShopSections();   // shop 1 → its products, shop 2 → its products, …
     renderCartBadge();
     renderCart();
 
-    // search
+    // search (applies to every shop section)
     let searchTimer;
     $("#searchInput").oninput = (e) => {
       state.search = e.target.value;
       $("#searchClear").hidden = !e.target.value;
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(loadProducts, 250);
+      searchTimer = setTimeout(() => state.shops.forEach(loadProducts), 250);
     };
     $("#searchClear").onclick = () => {
       $("#searchInput").value = "";
       state.search = "";
       $("#searchClear").hidden = true;
       clearTimeout(searchTimer);
-      loadProducts();
+      state.shops.forEach(loadProducts);
     };
-    $("#sortSelect").onchange = (e) => { state.sort = e.target.value; loadProducts(); };
+    $("#sortSelect").onchange = (e) => { state.sort = e.target.value; state.shops.forEach(loadProducts); };
     $$("#filterBar .chip").forEach(c => c.onclick = () => {
       $$("#filterBar .chip").forEach(x => x.classList.remove("active"));
       c.classList.add("active");
       state.filter = c.dataset.filter;
-      loadProducts();
+      state.shops.forEach(loadProducts);
     });
 
     // cart
     $("#cartBtn").onclick = openDrawer;
     $("#cartClose").onclick = closeDrawer;
     $("#drawerOverlay").onclick = closeDrawer;
-    $("#heroShop").onclick = () => $("#catChips").scrollIntoView({ behavior: "smooth", block: "center" });
+    $("#heroShop").onclick = () => $("#shopSections").scrollIntoView({ behavior: "smooth", block: "start" });
 
     // modals
     $("#checkoutClose").onclick = closeCheckout;

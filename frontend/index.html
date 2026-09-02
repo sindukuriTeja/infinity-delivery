@@ -107,18 +107,9 @@
     <!-- PROMO STRIP -->
     <div class="promo-strip" id="promoStrip"></div>
 
-    <!-- SHOP SECTION (shop name + details, then its products) -->
-    <div class="shop-section" id="shopSection">
-      <div class="shop-head" id="shopHead"></div>
-      <div class="shop-tabs" id="shopTabs"></div>
-    </div>
+    <!-- SHOP SECTIONS: each shop renders its own header + its own products, in order -->
+    <div id="shopSections"></div>
 
-    <!-- CATEGORIES -->
-    <div class="section-head">
-      <h2>Shop by Category</h2>
-      <span class="te">వర్గాల వారీగా కొనుగోలు</span>
-    </div>
-    <div class="cat-chips" id="catChips"></div>
 
     <!-- FILTER BAR -->
     <div class="filter-bar" id="filterBar">
@@ -137,17 +128,7 @@
       </div>
     </div>
 
-    <!-- PRODUCT GRID -->
-    <div class="section-head" id="resultsHead">
-      <h2 id="resultsTitle">All Products</h2>
-      <span class="count" id="resultsCount"></span>
-    </div>
-    <div class="grid" id="productGrid"></div>
-    <div class="empty" id="emptyState" hidden>
-      <div class="empty-emoji">🔍</div>
-      <p>No products found. Try a different search.</p>
-    </div>
-  </section>
+    </section>
 
   <!-- MANDI VIEW -->
   <section id="view-mandi" class="view">
