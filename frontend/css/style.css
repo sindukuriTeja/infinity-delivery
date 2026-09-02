@@ -134,6 +134,29 @@ img{max-width:100%}
 .fc3{bottom:6%;left:20%;animation-delay:1.6s}
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
 
+/* ---------- FOOD DELIVERY APP BANNER ---------- */
+.food-app-banner{display:flex;align-items:center;gap:18px;margin:22px 0;
+  background:var(--grad);border-radius:var(--r-lg);padding:20px 24px;
+  box-shadow:var(--shadow);color:#fff;position:relative;overflow:hidden}
+.food-app-banner::after{content:"";position:absolute;right:-40px;top:-40px;width:180px;height:180px;
+  border-radius:50%;background:rgba(255,255,255,.10)}
+.fab-icon{font-size:44px;flex:0 0 auto;filter:drop-shadow(0 4px 8px rgba(0,0,0,.25))}
+.fab-text{flex:1 1 auto;min-width:0}
+.fab-text h3{margin:0 0 4px;font-size:19px;font-weight:800;letter-spacing:-.2px}
+.fab-text p{margin:0;font-size:13.5px;line-height:1.5;color:rgba(255,255,255,.92)}
+.fab-text p .te{font-family:var(--te-font);display:block;font-size:12.5px;margin-top:3px;
+  color:rgba(255,255,255,.85)}
+.fab-play{flex:0 0 auto;display:inline-flex;align-items:center;gap:12px;background:#111;
+  color:#fff;text-decoration:none;padding:12px 18px;border-radius:14px;
+  border:1px solid rgba(255,255,255,.25);box-shadow:0 8px 20px rgba(0,0,0,.3);
+  transition:.15s;position:relative;z-index:1}
+.fab-play:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(0,0,0,.4)}
+.fab-play svg{flex:0 0 auto}
+.fab-play-txt{display:flex;flex-direction:column;line-height:1.15}
+.fab-play-txt small{font-size:10px;font-weight:600;letter-spacing:1.5px;color:rgba(255,255,255,.75)}
+.fab-play-txt b{font-size:16px;font-weight:700}
+.footer-links a[href*="play.google.com"]{font-weight:600}
+
 /* ---------- PROMO STRIP ---------- */
 .promo-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}
 .promo-card{background:var(--card);border-radius:var(--r);padding:16px 18px;
@@ -513,6 +536,9 @@ img{max-width:100%}
   .grid{grid-template-columns:repeat(2,1fr);gap:12px}
   .p-img{font-size:44px}
   .promo-strip{grid-template-columns:1fr}
+  .food-app-banner{flex-direction:column;align-items:flex-start;gap:12px;padding:18px}
+  .fab-play{width:100%;justify-content:center}
+  .fab-text h3{font-size:17px}
   .hero h1{font-size:28px}
   .hero-stats{gap:18px}
   .cart-total{display:none}
